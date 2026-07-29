@@ -1,0 +1,22 @@
+version: '3.9'
+
+services:
+  app:
+    build: .
+    container_name: my_python_app
+    ports:
+      - "5000:5000"  # Change if using different port
+    volumes:
+      - .:/app  # Live code changes without rebuild
+    environment:
+      - PYTHONUNBUFFERED=1  # See logs in real-time
+    # Uncomment for database:
+    # depends_on:
+    #   - db
+    # 
+    # db:
+    #   image: postgres:15
+    #   environment:
+    #     POSTGRES_PASSWORD: postgres
+    #   ports:
+    #     - "5432:5432"

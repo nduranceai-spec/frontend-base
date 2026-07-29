@@ -1,0 +1,41 @@
+# Python virtual environment
+.venv/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment variables
+.env
+.env.*
+
+# SQLite database files
+ndurance.db
+ndurance.db-shm
+ndurance.db-wal
+
+# Reports and snapshots output
+reports_output/
+snapshots/
+
+# Python tools
+.pytest_cache/
+coverage.xml
+htmlcov/
+.tox/
+
+# IDE / editor files
+.vscode/
+.idea/
+*.iml
+
+# Uvicorn reload folder
+__pypackages__/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db

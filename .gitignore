@@ -1,0 +1,43 @@
+# Python virtual environment
+.venv/
+backend/.venv/
+
+# Node modules and build output
+frontend/node_modules/
+frontend/.next/
+
+# Environment variable files
+frontend/.env.local
+frontend/.env.*
+backend/.env
+backend/.env.*
+
+# SQLite and generated DB files
+*.db
+*.db-shm
+*.db-wal
+
+# Report and snapshot outputs
+reports_output/
+snapshots/
+backend/reports_output/
+backend/snapshots/
+
+# TypeScript build info
+frontend/tsconfig.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+
+# Docker cache
+.dockerignore
