@@ -1,269 +1,334 @@
 'use client';
-
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+// app/page.tsx — Spider Track AI Landing Page
+import { useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
-import {
-  Activity,
-  ArrowRight,
-  BarChart3,
-  Brain,
-  Camera,
-  ChevronRight,
-  Shield,
-  Sparkles,
-  TrendingUp,
-  Zap,
-  Eye,
-  Play,
-  CircleCheckBig,
-} from 'lucide-react';
-import { useAuthStore } from '@/lib/store';
-import SignatureHero from '@/components/SignatureHero';
+import { motion, useScroll, useTransform } from 'framer-motion';
+import SpiderWebBackground from '@/components/ui/SpiderWebBackground';
+import SpiderButton from '@/components/ui/SpiderButton';
+import GlassCard from '@/components/ui/GlassCard';
 
-const FEATURES = [
+const features = [
   {
-    icon: Camera,
-    title: 'Multi-camera motion capture',
-    desc: 'Left, back, and right synchronized streams deliver a cinematic view of your movement.',
+    icon: '◉',
+    title: 'Triple Camera Capture',
+    desc: 'Synchronized LEFT, BACK, and RIGHT cameras deliver a 360° biomechanical view of every stride.',
+    color: 'from-spider-scarlet/20 to-transparent',
   },
   {
-    icon: Brain,
-    title: 'AI coaching insights',
-    desc: 'Biomechanical recommendations and risk signals are generated in seconds for every session.',
+    icon: '◈',
+    title: 'AI Posture Analysis',
+    desc: 'Real-time skeletal mapping tracks 33 body keypoints — head, shoulders, hips, knees, and ankles.',
+    color: 'from-spider-electric/10 to-transparent',
   },
   {
-    icon: Activity,
-    title: 'Instant posture intelligence',
-    desc: 'Detect and rank cadence, contact time, stride quality, and balance with real-time overlays.',
-  },
-  {
-    icon: BarChart3,
-    title: 'Executive-grade reporting',
-    desc: 'Export polished reports for athletes, coaches, and clinicians without leaving the platform.',
-  },
-  {
-    icon: Eye,
-    title: 'MediaPipe overlays',
-    desc: 'Every landmark is tracked with precision so form feedback feels tangible and actionable.',
-  },
-  {
-    icon: TrendingUp,
-    title: 'Performance progressions',
-    desc: 'Monitor week-over-week change and surface the next best training intervention automatically.',
+    icon: '◇',
+    title: 'Performance Reports',
+    desc: 'Instant downloadable reports with radar charts, alignment scores, and AI-driven coaching insights.',
+    color: 'from-spider-scarlet/15 to-transparent',
   },
 ];
 
-const STATS = [
-  { value: '33', label: 'Landmarks tracked', icon: Sparkles },
-  { value: '3', label: 'Cameras live', icon: Camera },
-  { value: '7+', label: 'Activities recognized', icon: Activity },
-  { value: '30', label: 'FPS stream analysis', icon: Zap },
+const stats = [
+  { value: '33', label: 'Body Keypoints' },
+  { value: '3×', label: 'Camera Angles' },
+  { value: '<50ms', label: 'AI Latency' },
+  { value: '99.2%', label: 'Detection Rate' },
+];
+
+const steps = [
+  { num: '01', title: 'Mount Cameras', desc: 'Position three USB cameras at Left, Back, and Right positions around the treadmill.' },
+  { num: '02', title: 'Start Session', desc: 'Enter athlete profile, launch Spider Track AI, and begin the synchronized capture.' },
+  { num: '03', title: 'AI Analysis', desc: 'Our neural network maps posture in real-time, tracking every joint and movement pattern.' },
+  { num: '04', title: 'Get Report', desc: 'Download a premium PDF report with scores, insights, and corrective recommendations.' },
 ];
 
 export default function LandingPage() {
-  const router = useRouter();
-  const { isAuthenticated } = useAuthStore();
+  const heroRef = useRef<HTMLDivElement>(null);
+  const { scrollY } = useScroll();
+  const heroY = useTransform(scrollY, [0, 600], [0, -120]);
+  const heroOpacity = useTransform(scrollY, [0, 400], [1, 0]);
 
+  // Scroll reveal
   useEffect(() => {
-    if (isAuthenticated) router.replace('/dashboard');
-  }, [isAuthenticated, router]);
+    const observer = new IntersectionObserver(
+      (entries) => entries.forEach(e => {
+        if (e.isIntersecting) e.target.classList.add('visible');
+      }),
+      { threshold: 0.15 }
+    );
+    document.querySelectorAll('.reveal, .reveal-left').forEach(el => observer.observe(el));
+    return () => observer.disconnect();
+  }, []);
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-transparent">
-      <nav className="sticky top-0 z-50 border-b border-white/10 bg-[#050816]/80 backdrop-blur-2xl">
-        <div className="mx-auto flex h-16 max-w-[1400px] items-center justify-between px-4 sm:px-6 lg:px-8 xl:px-10">
-          <Link href="/" className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-cyan-400/20 bg-cyan-400/10">
-              <Activity className="h-5 w-5 text-cyan-300" />
-            </div>
-            <div>
-              <p className="text-sm font-semibold tracking-[0.24em] text-white">NDURANCE</p>
-              <p className="text-[10px] uppercase tracking-[0.28em] text-slate-500">AI MOTION LAB</p>
-            </div>
-          </Link>
+    <div className="relative min-h-screen bg-spider-void overflow-x-hidden">
+      <SpiderWebBackground intensity="normal" />
 
-          <div className="hidden items-center gap-7 text-sm text-slate-400 md:flex">
-            {['Home', 'Dashboard', 'Upload', 'Analytics', 'Reports'].map((item) => (
-              <a key={item} href={item === 'Home' ? '/' : '#'} className="transition hover:text-white">
-                {item}
-              </a>
-            ))}
+      {/* ── Navbar ─────────────────────────────── */}
+      <motion.nav
+        initial={{ y: -60, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+        className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 md:px-12 py-4 backdrop-blur-xl border-b border-spider-scarlet/10 bg-spider-void/60"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-spider-scarlet to-spider-crimson flex items-center justify-center shadow-spider-sm">
+            <svg viewBox="0 0 20 20" fill="none" className="w-4 h-4">
+              <path d="M10 2L10 18M2 10L18 10M4 4L16 16M16 4L4 16" stroke="white" strokeWidth="1.5" strokeLinecap="round"/>
+              <circle cx="10" cy="10" r="2.5" fill="white"/>
+            </svg>
           </div>
-
-          <div className="flex items-center gap-3">
-            <button className="btn-ghost hidden sm:inline-flex">Notifications</button>
-            <Link href="/login" className="btn-secondary hidden sm:inline-flex">
-              Sign In
-            </Link>
-            <Link href="/signup" className="btn-primary">
-              Start Analysis
-              <ChevronRight className="h-4 w-4" />
-            </Link>
-          </div>
+          <span className="font-display text-sm font-bold tracking-widest text-spider-white hidden sm:block">SPIDER TRACK <span className="text-spider-scarlet">AI</span></span>
         </div>
-      </nav>
+        <div className="flex items-center gap-4">
+          <Link href="/login">
+            <span className="font-display text-xs tracking-widest text-spider-silver hover:text-spider-white transition-colors uppercase cursor-pointer hidden md:block">
+              Sign In
+            </span>
+          </Link>
+          <Link href="/signup">
+            <SpiderButton size="sm" variant="primary">Get Started</SpiderButton>
+          </Link>
+        </div>
+      </motion.nav>
 
-      <SignatureHero />
+      {/* ── Hero ───────────────────────────────── */}
+      <section ref={heroRef} className="relative min-h-screen flex flex-col items-center justify-center text-center px-6 pt-20">
+        <motion.div style={{ y: heroY, opacity: heroOpacity }} className="relative z-10 max-w-5xl mx-auto">
 
-      <section className="mx-auto max-w-[1400px] px-4 py-16 sm:px-6 lg:px-8 xl:px-10">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {STATS.map((stat, index) => (
+          {/* Badge */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.2, duration: 0.5 }}
+            className="inline-flex items-center gap-2 px-4 py-2 mb-8 rounded-full border border-spider-scarlet/30 bg-spider-scarlet/8 text-spider-scarlet text-xs font-mono tracking-widest"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-spider-scarlet animate-pulse" />
+            AI-POWERED · TRIPLE CAMERA · REAL-TIME ANALYSIS
+          </motion.div>
+
+          {/* Headline */}
+          <motion.h1
+            initial={{ opacity: 0, y: 40 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.35, duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+            className="font-display text-5xl md:text-7xl lg:text-8xl font-black tracking-tight leading-none mb-6"
+          >
+            <span className="text-gradient-white">TRACK EVERY</span>
+            <br />
+            <span className="text-gradient-crimson">STRIDE.</span>
+            <br />
+            <span className="text-spider-white/40 text-3xl md:text-5xl font-light tracking-widest">MASTER YOUR RUN.</span>
+          </motion.h1>
+
+          <motion.p
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.55, duration: 0.7 }}
+            className="text-spider-silver/70 text-lg md:text-xl max-w-2xl mx-auto mb-10 leading-relaxed"
+          >
+            Spider Track AI uses three synchronized cameras and deep neural networks
+            to analyze every aspect of your treadmill run — posture, symmetry, cadence, and power.
+          </motion.p>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.7, duration: 0.6 }}
+            className="flex flex-wrap items-center justify-center gap-4"
+          >
+            <Link href="/signup">
+              <SpiderButton size="lg" variant="primary">Begin Analysis</SpiderButton>
+            </Link>
+            <Link href="/login">
+              <SpiderButton size="lg" variant="secondary">View Demo</SpiderButton>
+            </Link>
+          </motion.div>
+
+          {/* Athlete silhouette */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.7 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.9, duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
+            className="relative mt-16 mx-auto w-64 h-80 md:w-80 md:h-96"
+          >
+            <svg viewBox="0 0 200 280" fill="none" className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
+              {/* Energy aura */}
+              <ellipse cx="100" cy="280" rx="70" ry="15" fill="rgba(220,20,60,0.15)" />
+              {/* Body silhouette */}
+              <ellipse cx="100" cy="32" rx="16" ry="18" fill="rgba(220,20,60,0.15)" stroke="rgba(220,20,60,0.5)" strokeWidth="1.5"/>
+              <rect x="82" y="52" width="36" height="70" rx="6" fill="rgba(220,20,60,0.1)" stroke="rgba(220,20,60,0.4)" strokeWidth="1.2"/>
+              <rect x="58" y="58" width="22" height="60" rx="5" fill="rgba(220,20,60,0.08)" stroke="rgba(220,20,60,0.3)" strokeWidth="1"/>
+              <rect x="120" y="58" width="22" height="60" rx="5" fill="rgba(220,20,60,0.08)" stroke="rgba(220,20,60,0.3)" strokeWidth="1"/>
+              <rect x="84" y="124" width="14" height="80" rx="5" fill="rgba(220,20,60,0.1)" stroke="rgba(220,20,60,0.4)" strokeWidth="1"/>
+              <rect x="102" y="124" width="14" height="80" rx="5" fill="rgba(220,20,60,0.1)" stroke="rgba(220,20,60,0.4)" strokeWidth="1"/>
+              {/* Energy trail lines */}
+              {[-30, -15, 0, 15, 30].map((offset, i) => (
+                <motion.line
+                  key={i}
+                  x1={100 + offset} y1="0" x2={100 + offset * 2} y2="280"
+                  stroke={`rgba(220,20,60,${0.05 + i * 0.03})`}
+                  strokeWidth="0.5"
+                  strokeDasharray="4 8"
+                  animate={{ strokeDashoffset: [0, -60] }}
+                  transition={{ duration: 2, repeat: Infinity, ease: 'linear', delay: i * 0.3 }}
+                />
+              ))}
+              {/* Keypoints */}
+              {[
+                [100, 32], [100, 65], [82, 65], [118, 65],
+                [100, 124], [84, 170], [102, 170], [84, 205], [102, 205]
+              ].map(([x, y], i) => (
+                <motion.circle
+                  key={i} cx={x} cy={y} r="3.5"
+                  fill="rgba(220,20,60,0.9)"
+                  animate={{ r: [3.5, 5, 3.5], opacity: [0.7, 1, 0.7] }}
+                  transition={{ duration: 1.5, delay: i * 0.15, repeat: Infinity }}
+                />
+              ))}
+              {/* Skeleton lines */}
+              <line x1="100" y1="50" x2="100" y2="122" stroke="rgba(220,20,60,0.4)" strokeWidth="1.2"/>
+              <line x1="100" y1="65" x2="82" y2="65" stroke="rgba(220,20,60,0.4)" strokeWidth="1.2"/>
+              <line x1="100" y1="65" x2="118" y2="65" stroke="rgba(220,20,60,0.4)" strokeWidth="1.2"/>
+              <line x1="100" y1="124" x2="84" y2="170" stroke="rgba(220,20,60,0.4)" strokeWidth="1.2"/>
+              <line x1="100" y1="124" x2="102" y2="170" stroke="rgba(220,20,60,0.4)" strokeWidth="1.2"/>
+              <line x1="84" y1="170" x2="84" y2="205" stroke="rgba(220,20,60,0.35)" strokeWidth="1"/>
+              <line x1="102" y1="170" x2="102" y2="205" stroke="rgba(220,20,60,0.35)" strokeWidth="1"/>
+            </svg>
+            {/* Orbit rings */}
+            {[80, 110, 140].map((r, i) => (
+              <motion.div
+                key={i}
+                className="absolute rounded-full border border-spider-scarlet/20"
+                style={{ inset: `calc(50% - ${r}px)`, width: r * 2, height: r * 2, top: `calc(50% - ${r}px)`, left: `calc(50% - ${r}px)` }}
+                animate={{ rotate: i % 2 === 0 ? 360 : -360 }}
+                transition={{ duration: 8 + i * 4, repeat: Infinity, ease: 'linear' }}
+              />
+            ))}
+          </motion.div>
+        </motion.div>
+
+        {/* Scroll indicator */}
+        <motion.div
+          animate={{ y: [0, 8, 0] }}
+          transition={{ duration: 2, repeat: Infinity }}
+          className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 text-spider-dim"
+        >
+          <span className="text-[10px] font-mono tracking-widest">SCROLL</span>
+          <div className="w-px h-8 bg-gradient-to-b from-spider-scarlet/60 to-transparent" />
+        </motion.div>
+      </section>
+
+      {/* ── Stats ──────────────────────────────── */}
+      <section className="relative z-10 py-16 border-y border-spider-scarlet/10">
+        <div className="max-w-5xl mx-auto px-6 grid grid-cols-2 md:grid-cols-4 gap-8">
+          {stats.map((s, i) => (
             <motion.div
-              key={stat.label}
+              key={s.label}
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
-              transition={{ delay: index * 0.08 }}
-              className="glass-card p-6"
+              transition={{ delay: i * 0.1 }}
+              className="text-center"
             >
-              <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/5">
-                <stat.icon className="h-5 w-5 text-cyan-300" />
-              </div>
-              <div className="text-3xl font-semibold text-white">{stat.value}</div>
-              <div className="mt-2 text-sm text-slate-400">{stat.label}</div>
+              <p className="font-display text-4xl md:text-5xl font-black text-gradient-crimson">{s.value}</p>
+              <p className="text-spider-silver/60 text-xs font-mono tracking-widest mt-1">{s.label}</p>
             </motion.div>
           ))}
         </div>
       </section>
 
-      <section className="mx-auto max-w-[1400px] px-4 py-8 sm:px-6 lg:px-8 xl:px-10">
-        <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-          <motion.div
-            initial={{ opacity: 0, y: 18 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="glass-card overflow-hidden p-8"
-          >
-            <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.28em] text-cyan-200">
-              <Sparkles className="h-3.5 w-3.5" /> AI workflow
-            </div>
-            <h2 className="max-w-2xl text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-              A premium analysis loop for athletes, coaches, and clinicians.
-            </h2>
-            <p className="mt-4 max-w-2xl text-base leading-8 text-slate-400">
-              From upload to insight, every touchpoint feels deliberate — polished, clear, and built to make motion intelligence easy to trust.
-            </p>
-            <div className="mt-8 grid gap-4 sm:grid-cols-2">
-              {[
-                'Zero-friction video upload',
-                'Human-readable AI summaries',
-                'Risk and recovery signals',
-                'Downloadable reports',
-              ].map((item) => (
-                <div key={item} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-300">
-                  <CircleCheckBig className="h-4 w-4 text-cyan-300" />
-                  {item}
-                </div>
-              ))}
-            </div>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 18 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ delay: 0.08 }}
-            className="glass-card p-8"
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.28em] text-slate-500">Analysis pipeline</p>
-                <h3 className="mt-2 text-2xl font-semibold text-white">Upload • Analyze • Act</h3>
-              </div>
-              <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-sm font-semibold text-emerald-300">
-                Live
-              </div>
-            </div>
-            <div className="mt-8 space-y-4">
-              {[
-                ['Video intake', 'MP4 or MOV', 'text-cyan-300'],
-                ['Pose estimation', 'MediaPipe', 'text-blue-300'],
-                ['Biomechanics engine', 'AI scoring', 'text-emerald-300'],
-              ].map(([title, detail, color]) => (
-                <div key={title} className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-4">
-                  <div>
-                    <p className="font-medium text-white">{title}</p>
-                    <p className="mt-1 text-sm text-slate-400">{detail}</p>
-                  </div>
-                  <div className={`h-2.5 w-2.5 rounded-full ${color} bg-current`} />
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-[1400px] px-4 py-12 sm:px-6 lg:px-8 xl:px-10">
-        <div className="mb-8 flex items-end justify-between gap-4">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.28em] text-slate-500">Capabilities</p>
-            <h2 className="mt-2 text-3xl font-semibold text-white">Designed for premium human motion intelligence.</h2>
-          </div>
-          <Link href="/signup" className="btn-primary hidden sm:inline-flex">
-            Explore platform
-          </Link>
-        </div>
-        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-          {FEATURES.map((feature, index) => (
-            <motion.div
-              key={feature.title}
-              initial={{ opacity: 0, y: 18 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: index * 0.06 }}
-              className="glass-card p-7"
-            >
-              <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl border border-cyan-400/20 bg-cyan-400/10">
-                <feature.icon className="h-5 w-5 text-cyan-300" />
-              </div>
-              <h3 className="text-lg font-semibold text-white">{feature.title}</h3>
-              <p className="mt-3 text-sm leading-7 text-slate-400">{feature.desc}</p>
-            </motion.div>
-          ))}
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-[1400px] px-4 pb-20 pt-6 sm:px-6 lg:px-8 xl:px-10">
+      {/* ── Features ───────────────────────────── */}
+      <section className="relative z-10 py-24 px-6 max-w-6xl mx-auto">
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
-          className="glass-card overflow-hidden p-8 sm:p-10"
+          className="text-center mb-16"
         >
-          <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
-            <div className="max-w-2xl">
-              <p className="text-sm font-semibold uppercase tracking-[0.28em] text-cyan-300">Launch your first analysis</p>
-              <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-                Make motion data feel as elegant as the experience itself.
-              </h2>
-              <p className="mt-4 text-base leading-8 text-slate-400">
-                Run your first upload, inspect the insights, and upgrade your coaching workflow in minutes.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-3">
-              <Link href="/signup" className="btn-primary">
-                Create account
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-              <Link href="/login" className="btn-secondary">
-                <Play className="h-4 w-4" />
-                Sign in
-              </Link>
-            </div>
+          <p className="text-xs font-mono text-spider-scarlet tracking-[0.3em] mb-3">CORE CAPABILITIES</p>
+          <h2 className="font-display text-4xl md:text-5xl font-black text-gradient-white">
+            ENGINEERED FOR<br /><span className="text-gradient-crimson">ELITE PERFORMANCE</span>
+          </h2>
+        </motion.div>
+        <div className="grid md:grid-cols-3 gap-6">
+          {features.map((f, i) => (
+            <GlassCard key={f.title} delay={i * 0.15} glow className="p-8">
+              <div className={`absolute inset-0 bg-gradient-to-br ${f.color} rounded-2xl`} />
+              <span className="text-4xl text-spider-scarlet mb-4 block">{f.icon}</span>
+              <h3 className="font-display text-sm font-bold tracking-widest text-spider-white mb-3 uppercase">{f.title}</h3>
+              <p className="text-spider-silver/70 text-sm leading-relaxed">{f.desc}</p>
+            </GlassCard>
+          ))}
+        </div>
+      </section>
+
+      {/* ── How It Works ───────────────────────── */}
+      <section className="relative z-10 py-24 px-6 bg-spider-black/40">
+        <div className="max-w-5xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mb-16"
+          >
+            <p className="text-xs font-mono text-spider-scarlet tracking-[0.3em] mb-3">WORKFLOW</p>
+            <h2 className="font-display text-4xl md:text-5xl font-black text-gradient-white">
+              FOUR STEPS TO<br /><span className="text-gradient-crimson">PEAK INSIGHT</span>
+            </h2>
+          </motion.div>
+          <div className="grid md:grid-cols-4 gap-6">
+            {steps.map((step, i) => (
+              <motion.div
+                key={step.num}
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.12 }}
+                className="relative"
+              >
+                {i < steps.length - 1 && (
+                  <div className="hidden md:block absolute top-6 left-[calc(100%_-_12px)] w-6 h-px bg-gradient-to-r from-spider-scarlet/50 to-spider-scarlet/20 z-10" />
+                )}
+                <div className="glass-card rounded-2xl p-6">
+                  <span className="font-display text-3xl font-black text-gradient-crimson block mb-3">{step.num}</span>
+                  <h4 className="font-display text-xs font-bold tracking-widest text-spider-white mb-2 uppercase">{step.title}</h4>
+                  <p className="text-spider-silver/60 text-xs leading-relaxed">{step.desc}</p>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── CTA ────────────────────────────────── */}
+      <section className="relative z-10 py-32 px-6 text-center">
+        <div className="absolute inset-0 bg-crimson-glow opacity-30 pointer-events-none" />
+        <motion.div
+          initial={{ opacity: 0, y: 40 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          className="relative max-w-2xl mx-auto"
+        >
+          <p className="text-xs font-mono text-spider-scarlet tracking-[0.3em] mb-4">READY TO START?</p>
+          <h2 className="font-display text-5xl md:text-6xl font-black text-gradient-white mb-6">
+            YOUR BEST RUN<br /><span className="text-gradient-crimson">STARTS NOW.</span>
+          </h2>
+          <p className="text-spider-silver/60 mb-10 leading-relaxed">
+            Join elite athletes and coaches using Spider Track AI to unlock the science behind every step.
+          </p>
+          <div className="flex flex-wrap justify-center gap-4">
+            <Link href="/signup"><SpiderButton size="xl" variant="primary">Launch Platform</SpiderButton></Link>
+            <Link href="/login"><SpiderButton size="xl" variant="ghost">Sign In</SpiderButton></Link>
           </div>
         </motion.div>
       </section>
 
-      <footer className="border-t border-white/10 px-4 py-8 text-center text-sm text-slate-500 sm:px-6 lg:px-8 xl:px-10">
-        <div className="mx-auto flex max-w-[1400px] flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center justify-center gap-2 sm:justify-start">
-            <Shield className="h-4 w-4 text-cyan-300" />
-            Privacy-first motion intelligence.
-          </div>
-          <div>FastAPI • Next.js • MediaPipe • Gemini AI</div>
-        </div>
+      {/* ── Footer ─────────────────────────────── */}
+      <footer className="relative z-10 border-t border-spider-scarlet/10 py-8 px-6 text-center">
+        <p className="font-display text-xs tracking-widest text-spider-dim">
+          © 2026 <span className="text-spider-scarlet">SPIDER TRACK AI</span> · Elite Running Performance Platform
+        </p>
       </footer>
     </div>
   );

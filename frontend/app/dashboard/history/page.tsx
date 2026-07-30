@@ -1,157 +1,59 @@
 'use client';
 // app/dashboard/history/page.tsx — Session History
-
-import { useEffect, useState } from 'react';
-import Link from 'next/link';
 import { motion } from 'framer-motion';
-import {
-  Clock, Activity, ChevronRight, Trash2,
-  BarChart3, FileText, AlertCircle
-} from 'lucide-react';
-import { sessionsApi, reportsApi } from '@/lib/api';
-import { Session } from '@/types';
-import { formatDistanceToNow } from 'date-fns';
+import Link from 'next/link';
+import GlassCard from '@/components/ui/GlassCard';
+import SpiderButton from '@/components/ui/SpiderButton';
 
-const ACTIVITY_COLORS: Record<string, string> = {
-  running: 'text-emerald-400', walking: 'text-blue-400', standing: 'text-slate-400',
-  squat: 'text-purple-400', pushup: 'text-amber-400', lunge: 'text-rose-400',
-  jump: 'text-cyan-400', unknown: 'text-slate-600',
-};
+const sessions = [
+  { id: 'SES-001', date: '2026-07-30', time: '14:32', type: 'Treadmill Run', duration: '12:45', score: 87, status: 'Complete' },
+  { id: 'SES-002', date: '2026-07-30', time: '11:15', type: 'Warm-up Analysis', duration: '05:30', score: 92, status: 'Complete' },
+  { id: 'SES-003', date: '2026-07-29', time: '16:00', type: 'Sprint Mechanics', duration: '08:20', score: 79, status: 'Complete' },
+  { id: 'SES-004', date: '2026-07-29', time: '09:10', type: 'Long Run Gait', duration: '22:10', score: 85, status: 'Complete' },
+  { id: 'SES-005', date: '2026-07-28', time: '15:45', type: 'Recovery Run', duration: '18:00', score: 90, status: 'Complete' },
+];
+
+const scoreColor = (s: number) => s >= 90 ? 'text-green-400' : s >= 80 ? 'text-spider-scarlet' : 'text-yellow-400';
 
 export default function HistoryPage() {
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [offset, setOffset] = useState(0);
-  const LIMIT = 20;
-
-  const load = async (off = 0) => {
-    setLoading(true);
-    try {
-      const res = await sessionsApi.getHistory(LIMIT, off);
-      setSessions((prev) => off === 0 ? res.data.sessions : [...prev, ...res.data.sessions]);
-      setTotal(res.data.total);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { load(0); }, []);
-
-  const handleDelete = async (id: string) => {
-    if (!confirm('Delete this session?')) return;
-    await sessionsApi.delete(id);
-    setSessions((prev) => prev.filter((s) => s.id !== id));
-    setTotal((t) => t - 1);
-  };
-
-  const handleGenerateReport = async (id: string) => {
-    try {
-      await reportsApi.generate(id);
-      window.open(reportsApi.downloadPdfUrl(id), '_blank');
-    } catch (err) {
-      alert('Failed to generate report. Please try again.');
-    }
-  };
-
   return (
-    <div className="p-8 space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold text-white">Session History</h1>
-        <p className="text-slate-500 text-sm mt-1">{total} sessions recorded</p>
-      </div>
+    <div className="p-6 md:p-8 max-w-5xl">
+      <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between mb-8 flex-wrap gap-4">
+        <div>
+          <p className="text-[10px] font-mono text-spider-scarlet tracking-[0.3em] mb-1">SESSION ARCHIVE</p>
+          <h1 className="font-display text-3xl font-black text-spider-white">SESSION <span className="text-gradient-crimson">HISTORY</span></h1>
+        </div>
+        <Link href="/dashboard/live">
+          <SpiderButton variant="primary" size="sm">▶ New Session</SpiderButton>
+        </Link>
+      </motion.div>
 
-      {loading && sessions.length === 0 ? (
-        <div className="space-y-3">
-          {[1,2,3,4,5].map((i) => (
-            <div key={i} className="glass-card h-20 shimmer rounded-xl" />
-          ))}
-        </div>
-      ) : sessions.length === 0 ? (
-        <div className="glass-card p-16 text-center rounded-2xl">
-          <BarChart3 className="w-12 h-12 text-slate-700 mx-auto mb-4" />
-          <h2 className="text-white font-semibold mb-2">No sessions yet</h2>
-          <p className="text-slate-500 text-sm">
-            Start your first live analysis session to build your history.
-          </p>
-          <Link href="/dashboard/live" className="btn-primary mt-6 inline-flex">
-            Start Analysis
-          </Link>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {sessions.map((s, i) => (
-            <motion.div
-              key={s.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.04 }}
-              className="glass-card p-5 flex items-center justify-between group"
-            >
-              {/* Left: icon + info */}
+      <div className="space-y-3">
+        {sessions.map((s, i) => (
+          <GlassCard key={s.id} delay={i * 0.07} className="p-5">
+            <div className="flex items-center justify-between flex-wrap gap-3">
               <div className="flex items-center gap-4">
-                <div className="w-11 h-11 rounded-xl bg-surface-800 flex items-center justify-center shrink-0">
-                  <Activity className={`w-5 h-5 ${ACTIVITY_COLORS[s.activity_type] || 'text-slate-400'}`} />
+                <div className="w-10 h-10 rounded-xl bg-spider-scarlet/10 border border-spider-scarlet/20 flex items-center justify-center">
+                  <span className="text-spider-scarlet text-lg">◉</span>
                 </div>
                 <div>
-                  <div className="text-sm font-semibold text-white capitalize">{s.activity_type}</div>
-                  <div className="flex items-center gap-3 mt-0.5">
-                    <span className="text-xs text-slate-600 flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      {Math.round(s.duration_seconds)}s
-                    </span>
-                    <span className="text-xs text-slate-600">{s.frames_analyzed} frames</span>
-                    <span className="text-xs text-slate-600">
-                      {formatDistanceToNow(new Date(s.created_at), { addSuffix: true })}
-                    </span>
-                  </div>
+                  <p className="text-sm font-semibold text-spider-white">{s.type}</p>
+                  <p className="text-[10px] font-mono text-spider-dim">{s.id} · {s.date} · {s.time} · {s.duration}</p>
                 </div>
               </div>
-
-              {/* Right: score + actions */}
               <div className="flex items-center gap-4">
-                {/* Score */}
                 <div className="text-right">
-                  <div className={`text-lg font-black ${
-                    s.overall_score >= 85 ? 'text-emerald-400' :
-                    s.overall_score >= 65 ? 'text-amber-400' : 'text-red-400'
-                  }`}>
-                    {s.overall_score.toFixed(0)}
-                  </div>
-                  <div className="text-xs text-slate-600">/ 100</div>
+                  <p className={`font-display text-xl font-black ${scoreColor(s.score)}`}>{s.score}</p>
+                  <p className="text-[9px] font-mono text-spider-dim">SCORE</p>
                 </div>
-
-                {/* Actions (show on hover) */}
-                <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Link href={`/dashboard/history/${s.id}`}
-                    className="btn-ghost text-xs px-3 py-1.5 rounded-lg">
-                    <ChevronRight className="w-4 h-4" />
-                  </Link>
-                  <button
-                    onClick={() => handleGenerateReport(s.id)}
-                    className="btn-ghost text-xs px-3 py-1.5 rounded-lg text-cyan-neon">
-                    <FileText className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(s.id)}
-                    className="btn-ghost text-xs px-3 py-1.5 rounded-lg text-red-400">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
+                <Link href="/dashboard/reports">
+                  <SpiderButton variant="ghost" size="sm">View</SpiderButton>
+                </Link>
               </div>
-            </motion.div>
-          ))}
-
-          {sessions.length < total && (
-            <button
-              onClick={() => { setOffset(sessions.length); load(sessions.length); }}
-              className="btn-secondary w-full mt-4"
-            >
-              Load More
-            </button>
-          )}
-        </div>
-      )}
+            </div>
+          </GlassCard>
+        ))}
+      </div>
     </div>
   );
 }
