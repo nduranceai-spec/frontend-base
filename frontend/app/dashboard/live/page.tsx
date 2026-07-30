@@ -1,468 +1,335 @@
 'use client';
-// app/dashboard/live/page.tsx — NDURANCE AI Live 3-Camera Analysis
-
-import { useState, useEffect, useRef, useCallback } from 'react';
+// app/dashboard/live/page.tsx — Triple Camera Capture Lab
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  Camera, Play, Square, Wifi, WifiOff,
-  Activity, Zap, AlertTriangle, Brain,
-  ChevronDown, Save, RefreshCw
-} from 'lucide-react';
-import { CameraWebSocket } from '@/lib/websocket';
-import { getApiErrorMessage, sessionsApi } from '@/lib/api';
-import { useAuthStore, useDashboardStore } from '@/lib/store';
-import {
-  CameraId, CameraAnalysisFrame, MotionAlert,
-  JointAngles, GaitMetrics, ExerciseData
-} from '@/types';
-import { ScoreRing } from '@/components/dashboard/ScoreRing';
-import { JointAnglesPanel } from '@/components/dashboard/JointAnglesPanel';
-import { AlertFeed } from '@/components/dashboard/AlertFeed';
-import { LiveCoach } from '@/components/ai/LiveCoach';
-import { MetricsPanel } from '@/components/dashboard/MetricsPanel';
-import { ActivityBadge } from '@/components/dashboard/ActivityBadge';
-import { LiveCharts } from '@/components/charts/LiveCharts';
+import SpiderButton from '@/components/ui/SpiderButton';
+import GlassCard from '@/components/ui/GlassCard';
 
-const CAMERAS: { id: CameraId; label: string }[] = [
-  { id: 'left',  label: 'LEFT CAM' },
-  { id: 'back',  label: 'BACK CAM' },
-  { id: 'right', label: 'RIGHT CAM' },
+// Body keypoints for overlay (relative %)
+const KEYPOINTS = [
+  { id: 'head',      label: 'HEAD',      x: 50, y: 8  },
+  { id: 'l-shoulder',label: 'L.SHOULDER',x: 35, y: 20 },
+  { id: 'r-shoulder',label: 'R.SHOULDER',x: 65, y: 20 },
+  { id: 'hip',       label: 'HIP',       x: 50, y: 42 },
+  { id: 'l-hip',     label: 'L.HIP',     x: 38, y: 42 },
+  { id: 'r-hip',     label: 'R.HIP',     x: 62, y: 42 },
+  { id: 'l-knee',    label: 'L.KNEE',    x: 36, y: 62 },
+  { id: 'r-knee',    label: 'R.KNEE',    x: 64, y: 62 },
+  { id: 'l-hand',    label: 'L.HAND',    x: 25, y: 45 },
+  { id: 'r-hand',    label: 'R.HAND',    x: 75, y: 45 },
+  { id: 'l-ankle',   label: 'L.ANKLE',   x: 36, y: 80 },
+  { id: 'r-ankle',   label: 'R.ANKLE',   x: 64, y: 80 },
 ];
 
-export default function LiveAnalysisPage() {
-  const { user } = useAuthStore();
-  const {
-    isLive, sessionId, cameras, primaryActivity, activityConfidence,
-    overallScore, alerts, coachCues, jointAngles, gaitMetrics, exerciseData,
-    sessionDuration, frameCount,
-    setCameraConnected, setCameraFrame, setCameraHealth,
-    startSession, endSession, incrementDuration,
-  } = useDashboardStore();
+// Skeleton connections
+const SKELETON = [
+  ['head','l-shoulder'],['head','r-shoulder'],
+  ['l-shoulder','r-shoulder'],
+  ['l-shoulder','l-hip'],['r-shoulder','r-hip'],
+  ['l-hip','r-hip'],['hip','l-hip'],['hip','r-hip'],
+  ['l-hip','l-knee'],['r-hip','r-knee'],
+  ['l-knee','l-ankle'],['r-knee','r-ankle'],
+  ['l-shoulder','l-hand'],['r-shoulder','r-hand'],
+];
 
-  // WebSocket refs for each camera
-  const wsRefs = useRef<Partial<Record<CameraId, CameraWebSocket>>>({});
-  // Video element refs for each camera (browser webcam)
-  const videoRefs = useRef<Partial<Record<CameraId, HTMLVideoElement>>>({});
-  // Canvas ref for frame capture
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  // Capture interval refs
-  const captureIntervals = useRef<Partial<Record<CameraId, ReturnType<typeof setInterval>>>>({});
-  // Duration ticker
-  const durationTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+const kpMap = Object.fromEntries(KEYPOINTS.map(k => [k.id, k]));
 
-  const [wsStatus, setWsStatus] = useState<Record<CameraId, string>>({
-    left: 'idle', back: 'idle', right: 'idle'
-  });
-  const [activeTab, setActiveTab] = useState<'cameras' | 'metrics' | 'coach'>('cameras');
-  const [isSaving, setIsSaving] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+type CamId = 'left' | 'back' | 'right';
 
-  const showCameras = activeTab === 'cameras';
-  const showAnalysis = activeTab !== 'cameras';
+function CameraPanel({
+  camId, label, active, onRef, recording,
+}: {
+  camId: CamId; label: string; active: boolean; onRef: (el: HTMLVideoElement | null) => void; recording: boolean;
+}) {
+  return (
+    <div className="relative flex flex-col gap-3">
+      {/* Camera label */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className={`w-2 h-2 rounded-full ${recording ? 'bg-spider-scarlet animate-pulse' : 'bg-spider-dim'}`} />
+          <span className="font-display text-xs tracking-widest text-spider-scarlet uppercase">{label}</span>
+        </div>
+        <span className="text-[10px] font-mono text-spider-dim">{camId.toUpperCase()} · CAM</span>
+      </div>
 
-  // ── Start Live Session ─────────────────────────────────────────────────
-  const handleStart = useCallback(async () => {
-    setErrorMessage(null);
+      {/* Video frame */}
+      <div className="relative aspect-video bg-spider-black rounded-xl overflow-hidden web-border group">
+        {/* Scan line */}
+        {recording && (
+          <div className="scan-overlay">
+            <div className="absolute left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-spider-scarlet/80 to-transparent animate-scan-line" style={{ animation: 'scanLineAnim 2.5s linear infinite' }} />
+          </div>
+        )}
 
-    try {
-      const res = await sessionsApi.start({
-        activity_type: 'unknown',
-        session_type: 'live',
-        camera_count: 3,
-      });
-      startSession(res.data.session_id);
+        {/* Video element */}
+        <video ref={onRef} autoPlay muted playsInline className="w-full h-full object-cover" />
 
-      // Connect WebSocket for each camera
-      CAMERAS.forEach(({ id }) => {
-        const ws = new CameraWebSocket(
-          id,
-          (data: CameraAnalysisFrame) => setCameraFrame(id, data),
-          (status) => {
-            setWsStatus((prev) => ({ ...prev, [id]: status }));
-            setCameraConnected(id, status === 'connected');
-          },
-          parseFloat(user?.height_cm || '175'),
-        );
-        ws.connect(user?.id, parseFloat(user?.height_cm || '175'));
-        wsRefs.current[id] = ws;
-      });
+        {/* Placeholder when no camera */}
+        {!active && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-spider-black/90">
+            <svg viewBox="0 0 80 60" fill="none" className="w-20 h-16 mb-3 opacity-30">
+              <rect x="5" y="10" width="55" height="40" rx="5" stroke="rgba(220,20,60,0.6)" strokeWidth="1.5"/>
+              <polygon points="65,20 75,30 65,40" fill="rgba(220,20,60,0.4)"/>
+              <circle cx="32" cy="30" r="8" stroke="rgba(220,20,60,0.4)" strokeWidth="1"/>
+              <circle cx="32" cy="30" r="3" fill="rgba(220,20,60,0.3)"/>
+            </svg>
+            <p className="text-[10px] font-mono text-spider-dim tracking-widest">CAMERA STANDBY</p>
+            <p className="text-[8px] font-mono text-spider-scarlet/50 mt-1">{label} POSITION</p>
+          </div>
+        )}
 
-      // Wait for hidden video elements to mount before attaching streams
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      await startWebcams();
+        {/* AI keypoint overlay (SVG) */}
+        {active && recording && (
+          <svg className="absolute inset-0 w-full h-full pointer-events-none" preserveAspectRatio="none">
+            {/* Skeleton lines */}
+            {SKELETON.map(([a, b], i) => {
+              const ka = kpMap[a]; const kb = kpMap[b];
+              if (!ka || !kb) return null;
+              return (
+                <motion.line key={i}
+                  x1={`${ka.x}%`} y1={`${ka.y}%`}
+                  x2={`${kb.x}%`} y2={`${kb.y}%`}
+                  stroke="rgba(220,20,60,0.6)" strokeWidth="1.5"
+                  initial={{ pathLength: 0 }} animate={{ pathLength: 1 }}
+                  transition={{ duration: 0.5, delay: i * 0.03 }}
+                />
+              );
+            })}
+            {/* Keypoints */}
+            {KEYPOINTS.map((kp) => (
+              <g key={kp.id}>
+                <motion.circle
+                  cx={`${kp.x}%`} cy={`${kp.y}%`} r="4"
+                  fill="rgba(220,20,60,0.85)"
+                  stroke="rgba(255,100,120,0.5)" strokeWidth="1"
+                  animate={{ r: [4, 5.5, 4] }}
+                  transition={{ duration: 1.5, repeat: Infinity, delay: Math.random() * 0.5 }}
+                />
+              </g>
+            ))}
+          </svg>
+        )}
 
-      // Start duration ticker
-      durationTimer.current = setInterval(incrementDuration, 1000);
+        {/* Corner web borders */}
+        <span className="absolute top-2 left-2 w-5 h-5 border-t-2 border-l-2 border-spider-scarlet/60 pointer-events-none" />
+        <span className="absolute top-2 right-2 w-5 h-5 border-t-2 border-r-2 border-spider-scarlet/60 pointer-events-none" />
+        <span className="absolute bottom-2 left-2 w-5 h-5 border-b-2 border-l-2 border-spider-scarlet/60 pointer-events-none" />
+        <span className="absolute bottom-2 right-2 w-5 h-5 border-b-2 border-r-2 border-spider-scarlet/60 pointer-events-none" />
 
-    } catch (err) {
-      const message = getApiErrorMessage(err);
-      console.error('[Live] Failed to start session:', message, err);
-      setErrorMessage(message);
-    }
-  }, [user, startSession, setCameraFrame, setCameraConnected, incrementDuration, setErrorMessage]);
+        {/* AI status chip */}
+        <div className="absolute top-3 left-3 flex items-center gap-1.5 px-2 py-1 rounded-md bg-spider-black/80 border border-spider-scarlet/20">
+          <div className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-green-400 animate-pulse' : 'bg-spider-dim'}`} />
+          <span className="text-[8px] font-mono text-spider-dim">{active ? 'LIVE' : 'OFFLINE'}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-  // ── Start Browser Webcams ──────────────────────────────────────────────
-  const startWebcams = async () => {
-    const constraints = { width: 640, height: 480, frameRate: 30 };
+export default function LiveCapturePage() {
+  const [recording, setRecording] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const [camActive, setCamActive] = useState({ left: false, back: false, right: false });
+  const [aiStatus, setAiStatus] = useState('STANDBY');
+  const [streams, setStreams] = useState<{ left?: MediaStream; back?: MediaStream; right?: MediaStream }>({});
 
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      console.warn('[Webcam] Browser does not support getUserMedia.');
-      CAMERAS.forEach(({ id }) => setCameraHealth(id, 'offline'));
-      return;
-    }
+  const videoRefs = useRef<{ left?: HTMLVideoElement | null; back?: HTMLVideoElement | null; right?: HTMLVideoElement | null }>({});
+  const mediaRecorders = useRef<{ left?: MediaRecorder; back?: MediaRecorder; right?: MediaRecorder }>({});
+  const chunks = useRef<{ left: Blob[]; back: Blob[]; right: Blob[] }>({ left: [], back: [], right: [] });
+  const timerRef = useRef<NodeJS.Timeout>();
 
+  const setVideoRef = useCallback((camId: CamId) => (el: HTMLVideoElement | null) => {
+    videoRefs.current[camId] = el;
+    if (el && streams[camId]) el.srcObject = streams[camId] ?? null;
+  }, [streams]);
+
+  const initCameras = async () => {
+    setAiStatus('INITIALIZING…');
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
-      const videoDevices = devices.filter((d) => d.kind === 'videoinput');
-      const usbDevices = videoDevices.filter((device) => /usb/i.test(device.label));
+      const videoDevices = devices.filter(d => d.kind === 'videoinput');
 
-      if (!usbDevices.length) {
-        console.warn('[Webcam] No USB cameras detected. Only USB cameras are supported.');
-        CAMERAS.forEach(({ id }) => setCameraHealth(id, 'offline'));
-        return;
-      }
-
-      for (let i = 0; i < CAMERAS.length; i++) {
-        const { id } = CAMERAS[i];
-        const device = usbDevices[i];
-
-        if (!device) {
-          console.warn(`[Webcam] No USB camera configured for '${id}'.`);
-          setCameraHealth(id, 'offline');
-          setCameraConnected(id, false);
-          continue;
-        }
-
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({
-            video: { deviceId: { exact: device.deviceId }, ...constraints },
-          });
-
-          const video = videoRefs.current[id];
-          if (!video) {
-            stream.getTracks().forEach((t) => t.stop());
-            setCameraHealth(id, 'offline');
-            setCameraConnected(id, false);
-            continue;
-          }
-
-          video.srcObject = stream;
-          await video.play();
-          setCameraHealth(id, 'OK');
-
-          const interval = setInterval(() => {
-            const canvas = canvasRef.current;
-            const ws = wsRefs.current[id];
-            if (!canvas || !video || !ws?.isConnected) return;
-
-            const ctx = canvas.getContext('2d');
-            if (!ctx) return;
-            canvas.width = 640;
-            canvas.height = 480;
-            ctx.drawImage(video, 0, 0, 640, 480);
-            ws.sendCanvasFrame(canvas, 0.7);
-          }, 1000 / 30);
-
-          captureIntervals.current[id] = interval;
-        } catch (err) {
-          console.warn(`[Webcam] Could not open USB camera '${id}':`, err);
-          setCameraHealth(id, 'offline');
-          setCameraConnected(id, false);
-        }
-      }
-    } catch (err) {
-      console.warn('[Webcam] enumerateDevices failed:', err);
-      CAMERAS.forEach(({ id }) => setCameraHealth(id, 'offline'));
-    }
-  };
-
-  // ── Stop Session ──────────────────────────────────────────────────────
-  const handleStop = useCallback(async () => {
-    // Stop capture loops
-    Object.values(captureIntervals.current).forEach(clearInterval);
-    captureIntervals.current = {};
-
-    // Stop WebSockets
-    Object.values(wsRefs.current).forEach((ws) => ws?.disconnect());
-    wsRefs.current = {};
-
-    // Stop webcam streams
-    Object.values(videoRefs.current).forEach((video) => {
-      if (video?.srcObject) {
-        (video.srcObject as MediaStream).getTracks().forEach((t) => t.stop());
-        video.srcObject = null;
-      }
-    });
-
-    if (durationTimer.current) clearInterval(durationTimer.current);
-    endSession();
-
-    // Save session
-    if (sessionId) {
-      setIsSaving(true);
-      try {
-        await sessionsApi.finalize({
-          session_id: sessionId,
-          duration_seconds: sessionDuration,
-          frames_analyzed: frameCount,
-          joint_angles_summary: jointAngles as Record<string, number>,
-          gait_metrics: gaitMetrics as any,
-          exercise_data: exerciseData as any,
-          alerts: alerts.map((a) => ({
-            severity: a.severity,
-            message: a.message,
-            category: a.category,
-            joint: a.joint,
-          })),
-          overall_score: overallScore,
-          activity_type: primaryActivity,
+      const getStream = async (deviceId?: string) =>
+        navigator.mediaDevices.getUserMedia({
+          video: deviceId ? { deviceId: { exact: deviceId } } : true,
+          audio: false,
         });
-      } catch (err) {
-        console.error('[Live] Finalize session error:', err);
-      } finally {
-        setIsSaving(false);
+
+      const cams: CamId[] = ['left', 'back', 'right'];
+      const newStreams: typeof streams = {};
+
+      for (let i = 0; i < cams.length; i++) {
+        const camId = cams[i];
+        try {
+          const stream = await getStream(videoDevices[i]?.deviceId);
+          newStreams[camId] = stream;
+          if (videoRefs.current[camId]) videoRefs.current[camId]!.srcObject = stream;
+          setCamActive(p => ({ ...p, [camId]: true }));
+        } catch {
+          // Camera not available — show placeholder
+        }
       }
+      setStreams(newStreams);
+      setAiStatus('READY');
+    } catch {
+      setAiStatus('CAM ERROR');
     }
-  }, [sessionId, sessionDuration, frameCount, jointAngles, gaitMetrics,
-      exerciseData, alerts, overallScore, primaryActivity, endSession]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (isLive) handleStop();
-    };
-  }, [handleStop, isLive]);
-
-  const formatDuration = (secs: number) => {
-    const m = Math.floor(secs / 60).toString().padStart(2, '0');
-    const s = (secs % 60).toString().padStart(2, '0');
-    return `${m}:${s}`;
   };
+
+  const startRecording = () => {
+    setRecording(true);
+    setElapsed(0);
+    setAiStatus('ANALYZING…');
+
+    timerRef.current = setInterval(() => setElapsed(e => e + 1), 1000);
+
+    (['left', 'back', 'right'] as CamId[]).forEach(camId => {
+      const stream = streams[camId];
+      if (!stream) return;
+      chunks.current[camId] = [];
+      const mr = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
+      mr.ondataavailable = e => { if (e.data.size > 0) chunks.current[camId].push(e.data); };
+      mr.start(100);
+      mediaRecorders.current[camId] = mr;
+    });
+  };
+
+  const stopRecording = () => {
+    setRecording(false);
+    clearInterval(timerRef.current);
+    setAiStatus('PROCESSING…');
+    (['left', 'back', 'right'] as CamId[]).forEach(camId => {
+      mediaRecorders.current[camId]?.stop();
+    });
+    setTimeout(() => setAiStatus('COMPLETE'), 1500);
+  };
+
+  const downloadFootage = (camId: CamId) => {
+    const blob = new Blob(chunks.current[camId], { type: 'video/webm' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `spider-track-${camId}-cam-${Date.now()}.webm`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  useEffect(() => () => clearInterval(timerRef.current), []);
+
+  const fmt = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
   return (
-    <div className="h-screen flex flex-col bg-surface-950">
-      {/* ── Top Bar ── */}
-      <div className="h-14 flex items-center justify-between px-6 border-b border-white/[0.06] bg-surface-900/50 backdrop-blur-xl shrink-0">
-        <div className="flex items-center gap-4">
-          <Camera className="w-5 h-5 text-cyan-neon" />
-          <span className="font-semibold text-white text-sm">Live Analysis</span>
-          {isLive && (
-            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-red-500/10 border border-red-500/25">
-              <span className="live-dot" />
-              <span className="text-red-400 text-xs font-medium">LIVE</span>
-              <span className="text-red-300/60 text-xs font-mono">{formatDuration(sessionDuration)}</span>
-            </div>
-          )}
+    <div className="p-4 md:p-6 max-w-[1400px]">
+      {/* Header */}
+      <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between mb-6 flex-wrap gap-4">
+        <div>
+          <p className="text-[10px] font-mono text-spider-scarlet tracking-[0.3em] mb-1">PERFORMANCE LAB</p>
+          <h1 className="font-display text-2xl md:text-3xl font-black text-spider-white">TRIPLE CAMERA <span className="text-gradient-crimson">CAPTURE</span></h1>
         </div>
-
         <div className="flex items-center gap-3">
-          {/* Camera status pills */}
-          {CAMERAS.map(({ id, label }) => {
-            const status = wsStatus[id];
-            const color = status === 'connected' ? 'text-emerald-400 border-emerald-500/25'
-              : status === 'connecting' ? 'text-amber-400 border-amber-500/25'
-              : 'text-slate-600 border-white/10';
-            return (
-              <span key={id} className={`hidden md:flex items-center gap-1.5 px-2 py-1 rounded-lg border text-xs font-mono ${color}`}>
-                {status === 'connected' ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
-                {label}
-              </span>
-            );
-          })}
-
-          {/* Control buttons */}
-          {!isLive ? (
-            <button onClick={handleStart} id="live-start" className="btn-primary text-sm px-5 py-2">
-              <Play className="w-4 h-4" /> Start Session
-            </button>
-          ) : (
-            <button onClick={handleStop} id="live-stop" disabled={isSaving}
-              className="btn-danger text-sm px-5 py-2">
-              {isSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Square className="w-4 h-4" />}
-              {isSaving ? 'Saving...' : 'End Session'}
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* ── Tab Navigation (mobile) ── */}
-      <div className="flex md:hidden border-b border-white/[0.06] shrink-0">
-        {(['cameras', 'metrics', 'coach'] as const).map((tab) => (
-          <button key={tab} onClick={() => setActiveTab(tab)}
-            className={`flex-1 py-3 text-xs font-medium capitalize transition-colors ${
-              activeTab === tab ? 'text-cyan-neon border-b-2 border-cyan-neon' : 'text-slate-500'
-            }`}>
-            {tab}
-          </button>
-        ))}
-      </div>
-
-      {/* ── Main Content ── */}
-      <div className="flex-1 min-h-0 flex overflow-hidden">
-        {/* ── Left: Camera Grid ── */}
-        <div className={`flex-1 min-w-0 p-4 overflow-y-auto ${showCameras ? 'flex' : 'hidden md:flex'}`}>
-
-          {/* Not started state */}
-          {!isLive && (
-            <div className="flex flex-col items-center justify-center h-full gap-6">
-              <div className="text-center">
-                <div className="w-20 h-20 mx-auto rounded-2xl bg-cyan-neon/5 border border-cyan-neon/20 flex items-center justify-center mb-4">
-                  <Camera className="w-10 h-10 text-cyan-neon/40" />
-                </div>
-                <h2 className="text-xl font-bold text-white mb-2">Ready to Analyze</h2>
-                <p className="text-slate-500 text-sm max-w-sm">
-                  Connect your cameras and click Start Session. NDURANCE AI will automatically
-                  detect your activity and track your motion in real-time.
-                </p>
-                {errorMessage && (
-                  <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-                    <div className="font-semibold text-red-100">Connection issue</div>
-                    <div>{errorMessage}</div>
-                  </div>
-                )}
-              </div>
-              <button onClick={handleStart} className="btn-primary px-10 py-4 text-base">
-                <Play className="w-5 h-5" />
-                Start Live Session
-              </button>
-            </div>
-          )}
-
-          {/* Live camera grid */}
-          {isLive && (
-            <div className="grid grid-cols-3 gap-3 h-full">
-              {CAMERAS.map(({ id, label }) => {
-                const camData = cameras[id];
-                const lastFrame = camData.lastFrame;
-
-                return (
-                  <div key={id} className="camera-panel scan-line">
-                    {/* Label */}
-                    <div className="camera-panel-label">{label}</div>
-
-                    {/* FPS + health */}
-                    <div className="absolute top-3 right-3 z-10 flex items-center gap-1.5">
-                      <div className={`w-2 h-2 rounded-full ${
-                        camData.health === 'OK' ? 'bg-emerald-400' :
-                        camData.health === 'degraded' ? 'bg-amber-400' : 'bg-red-500'
-                      }`} />
-                      <span className="text-xs font-mono text-white/70">{Number.isFinite(camData.fps) ? camData.fps.toFixed(0) : '--'} FPS</span>
-                    </div>
-
-                    {/* Frame / placeholder */}
-                    {lastFrame ? (
-                      <img
-                        src={`data:image/jpeg;base64,${lastFrame}`}
-                        alt={`${label} feed`}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex flex-col items-center justify-center bg-surface-900">
-                        <Activity className="w-8 h-8 text-cyan-neon/20 animate-pulse" />
-                        <span className="text-xs text-slate-700 mt-2 font-mono">
-                          {wsStatus[id] === 'connecting' ? 'Connecting...' : 'Waiting for feed'}
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Activity overlay at bottom */}
-                    {camData.lastData && (
-                      <div className="absolute bottom-3 left-3 right-3 z-10">
-                        <div className="flex items-center justify-between">
-                          <ActivityBadge
-                            activity={camData.lastData.activity}
-                            confidence={camData.lastData.confidence}
-                            small
-                          />
-                          <span className="text-xs font-mono text-cyan-neon/80">
-                            {typeof camData.lastData?.form_score === 'number' ? camData.lastData.form_score.toFixed(0) : '--'}%
-                          </span>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Hidden video element for this camera */}
-                    <video
-                      ref={(el) => { if (el) videoRefs.current[id] = el; }}
-                      className="hidden"
-                      muted
-                      playsInline
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Live Charts (shown below cameras when live) */}
-          {isLive && jointAngles && Object.keys(jointAngles).length > 0 && (
-            <div className="mt-4">
-              <LiveCharts jointAngles={jointAngles} gaitMetrics={gaitMetrics} />
-            </div>
-          )}
-        </div>
-
-        {/* ── Right: Analysis Panel ── */}
-        <div className={`w-80 shrink-0 border-l border-white/[0.06] overflow-y-auto flex flex-col gap-4 p-4 ${showAnalysis ? 'flex' : 'hidden md:flex'}`}>
-          {/* Overall Score Ring */}
-          <div className="glass-card p-4 text-center">
-            <ScoreRing score={overallScore} />
-            <p className="text-xs text-slate-500 mt-2">Overall Form Score</p>
+          {/* Timer */}
+          <div className="px-4 py-2 rounded-xl bg-spider-graphite/60 border border-spider-scarlet/20 font-display text-xl font-bold text-spider-white tabular-nums">
+            {fmt(elapsed)}
           </div>
+          {/* AI Status */}
+          <div className="px-3 py-2 rounded-xl bg-spider-void border border-spider-scarlet/20 flex items-center gap-2">
+            <motion.div className="w-1.5 h-1.5 rounded-full bg-spider-scarlet" animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1, repeat: Infinity }} />
+            <span className="text-[10px] font-mono text-spider-scarlet tracking-widest">{aiStatus}</span>
+          </div>
+        </div>
+      </motion.div>
 
-          {/* Activity */}
-          <div className="glass-card p-4">
-            <div className="text-xs text-slate-500 mb-2 uppercase tracking-wider">Detected Activity</div>
-            <ActivityBadge activity={primaryActivity} confidence={activityConfidence} />
-            {exerciseData && exerciseData.reps > 0 && (
-              <div className="mt-3 flex items-center gap-3">
-                <div className="text-2xl font-black text-white">{exerciseData.reps}</div>
-                <div className="text-xs text-slate-400">reps completed</div>
+      {/* Camera Grid + Body Silhouette */}
+      <div className="grid xl:grid-cols-7 gap-4 mb-6">
+        {/* Left Camera */}
+        <div className="xl:col-span-3">
+          <CameraPanel camId="left" label="LEFT CAMERA" active={camActive.left} onRef={setVideoRef('left')} recording={recording} />
+        </div>
+
+        {/* Center — 3D Body Silhouette */}
+        <div className="xl:col-span-1 flex flex-col items-center justify-center">
+          <GlassCard className="p-3 w-full">
+            <p className="text-[8px] font-mono text-spider-scarlet tracking-widest text-center mb-2">CAPTURE ANGLES</p>
+            <div className="relative aspect-[1/2] flex items-center justify-center">
+              <svg viewBox="0 0 120 240" fill="none" className="w-full h-full">
+                {/* Body */}
+                <ellipse cx="60" cy="20" rx="12" ry="14" fill="rgba(220,20,60,0.12)" stroke="rgba(220,20,60,0.4)" strokeWidth="1.2"/>
+                <rect x="46" y="36" width="28" height="55" rx="4" fill="rgba(220,20,60,0.08)" stroke="rgba(220,20,60,0.35)" strokeWidth="1"/>
+                <rect x="28" y="40" width="16" height="44" rx="4" fill="rgba(220,20,60,0.06)" stroke="rgba(220,20,60,0.25)" strokeWidth="0.8"/>
+                <rect x="76" y="40" width="16" height="44" rx="4" fill="rgba(220,20,60,0.06)" stroke="rgba(220,20,60,0.25)" strokeWidth="0.8"/>
+                <rect x="48" y="93" width="11" height="62" rx="4" fill="rgba(220,20,60,0.08)" stroke="rgba(220,20,60,0.35)" strokeWidth="1"/>
+                <rect x="61" y="93" width="11" height="62" rx="4" fill="rgba(220,20,60,0.08)" stroke="rgba(220,20,60,0.35)" strokeWidth="1"/>
+                {/* Keypoint dots */}
+                {[[60,20],[46,43],[74,43],[60,93],[48,125],[70,125],[48,156],[70,156]].map(([x,y],i)=>(
+                  <motion.circle key={i} cx={x} cy={y} r="3" fill="rgba(220,20,60,0.85)"
+                    animate={{r:[3,4,3]}} transition={{duration:1.5,repeat:Infinity,delay:i*0.2}}/>
+                ))}
+                {/* Camera indicators */}
+                <text x="2" y="130" fill="rgba(79,195,247,0.8)" fontSize="6" fontFamily="monospace">◀L</text>
+                <text x="106" y="130" fill="rgba(79,195,247,0.8)" fontSize="6" fontFamily="monospace">R▶</text>
+                <text x="45" y="238" fill="rgba(79,195,247,0.8)" fontSize="6" fontFamily="monospace">▼BACK</text>
+                {/* Angle arcs */}
+                <path d="M10,130 Q 60,100 110,130" stroke="rgba(79,195,247,0.2)" strokeWidth="0.8" strokeDasharray="3 4" fill="none"/>
+              </svg>
+            </div>
+          </GlassCard>
+        </div>
+
+        {/* Right Camera */}
+        <div className="xl:col-span-3">
+          <CameraPanel camId="right" label="RIGHT CAMERA" active={camActive.right} onRef={setVideoRef('right')} recording={recording} />
+        </div>
+      </div>
+
+      {/* Back Camera (full width) */}
+      <div className="mb-6">
+        <CameraPanel camId="back" label="BACK CAMERA" active={camActive.back} onRef={setVideoRef('back')} recording={recording} />
+      </div>
+
+      {/* Athlete Info + Controls */}
+      <div className="grid md:grid-cols-2 gap-4">
+        <GlassCard className="p-6">
+          <p className="text-[10px] font-mono text-spider-scarlet tracking-widest mb-4 uppercase">Athlete Info</p>
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { label: 'Name', value: 'John Athlete' },
+              { label: 'Session', value: `#${String(Date.now()).slice(-4)}` },
+              { label: 'Speed', value: '8.5 km/h' },
+              { label: 'Protocol', value: '5-min Run' },
+            ].map(f => (
+              <div key={f.label} className="px-3 py-2.5 rounded-lg bg-spider-void/60 border border-spider-scarlet/10">
+                <p className="text-[9px] font-mono text-spider-dim mb-1">{f.label}</p>
+                <p className="text-sm font-semibold text-spider-white">{f.value}</p>
               </div>
+            ))}
+          </div>
+        </GlassCard>
+
+        <GlassCard className="p-6 flex flex-col gap-4">
+          <p className="text-[10px] font-mono text-spider-scarlet tracking-widest uppercase">Controls</p>
+          <div className="flex flex-col gap-3">
+            <SpiderButton id="init-cameras" variant="electric" size="md" fullWidth onClick={initCameras}>
+              ◉ Initialize Cameras
+            </SpiderButton>
+            {!recording ? (
+              <SpiderButton id="start-recording" variant="primary" size="md" fullWidth onClick={startRecording}>
+                ▶ Start Recording
+              </SpiderButton>
+            ) : (
+              <SpiderButton id="stop-recording" variant="danger" size="md" fullWidth onClick={stopRecording}>
+                ■ Stop Recording
+              </SpiderButton>
             )}
-          </div>
-
-          {/* Joint Angles */}
-          <div className="glass-card p-4">
-            <div className="text-xs text-slate-500 mb-3 uppercase tracking-wider">Joint Angles</div>
-            <JointAnglesPanel angles={jointAngles} />
-          </div>
-
-          {/* Gait Metrics */}
-          {gaitMetrics && (primaryActivity === 'walking' || primaryActivity === 'running') && (
-            <div className="glass-card p-4">
-              <div className="text-xs text-slate-500 mb-3 uppercase tracking-wider">Gait Metrics</div>
-              <MetricsPanel metrics={gaitMetrics} />
+            <div className="grid grid-cols-3 gap-2">
+              {(['left', 'back', 'right'] as CamId[]).map(cam => (
+                <SpiderButton key={cam} variant="ghost" size="sm" onClick={() => downloadFootage(cam)}>
+                  ↓ {cam}
+                </SpiderButton>
+              ))}
             </div>
-          )}
-
-          {/* Alerts */}
-          <div className="glass-card p-4">
-            <div className="text-xs text-slate-500 mb-3 uppercase tracking-wider flex items-center gap-2">
-              <AlertTriangle className="w-3 h-3 text-amber-400" />
-              Posture Alerts
-              {alerts.length > 0 && (
-                <span className="ml-auto bg-amber-500/20 text-amber-400 text-xs px-1.5 py-0.5 rounded-full">
-                  {alerts.length}
-                </span>
-              )}
-            </div>
-            <AlertFeed alerts={alerts} />
           </div>
-
-          {/* AI Coach */}
-          <div className="glass-card p-4">
-            <div className="text-xs text-slate-500 mb-3 uppercase tracking-wider flex items-center gap-2">
-              <Brain className="w-3 h-3 text-purple-400" />
-              AI Coach
-            </div>
-            <LiveCoach cues={coachCues} isLive={isLive} />
-          </div>
-        </div>
+        </GlassCard>
       </div>
-
-      {/* Hidden canvas for frame capture */}
-      <canvas ref={canvasRef} className="hidden" width={640} height={480} />
     </div>
   );
 }

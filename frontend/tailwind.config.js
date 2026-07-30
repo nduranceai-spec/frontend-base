@@ -9,60 +9,55 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // NDURANCE Brand Palette
-        brand: {
-          50:  '#e0fffe',
-          100: '#b3fffd',
-          200: '#66fffb',
-          300: '#1afff9',
-          400: '#00e5f5',
-          500: '#00ccdc',
-          600: '#00a3b3',
-          700: '#007a88',
-          800: '#00515d',
-          900: '#002832',
+        // Spider Track AI — Core Palette
+        spider: {
+          void:      '#03010A',
+          black:     '#0A0008',
+          graphite:  '#1A1020',
+          deep:      '#120D18',
+          crimson:   '#8B0000',
+          scarlet:   '#DC143C',
+          red:       '#FF2244',
+          glow:      '#FF4466',
+          electric:  '#4FC3F7',
+          'electric-dim': '#1A6F8A',
+          white:     '#F0EEF5',
+          silver:    '#B8B4C0',
+          dim:       '#6B6478',
         },
-        cyan: {
-          neon: '#00E5FF',
-          glow: '#00BFFF',
-        },
-        purple: {
-          deep:  '#1a0533',
-          mid:   '#4a1a8a',
-          brand: '#7c3aed',
-          light: '#a855f7',
-        },
+        // Legacy surface tokens (kept for existing components)
         surface: {
-          950: '#050810',
-          900: '#0a0f1e',
-          800: '#111827',
-          700: '#1e293b',
-          600: '#334155',
+          950: '#03010A',
+          900: '#0A0008',
+          800: '#1A1020',
+          700: '#2A2030',
+          600: '#3A3045',
         },
         alert: {
-          danger:  '#ef4444',
+          danger:  '#DC143C',
           warning: '#f59e0b',
           success: '#22c55e',
-          info:    '#3b82f6',
+          info:    '#4FC3F7',
         },
       },
       backgroundImage: {
-        'grid-dark':
-          'radial-gradient(ellipse at center, rgba(0,229,255,0.04) 0%, transparent 60%), ' +
-          "url(\"data:image/svg+xml,%3Csvg width='40' height='40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0h40v40H0z' fill='none'/%3E%3Cpath d='M0 0v40M40 0v40M0 0h40M0 40h40' stroke='%2300e5ff' stroke-width='0.15' opacity='0.15'/%3E%3C/svg%3E\")",
+        'spider-radial':
+          'radial-gradient(ellipse 80% 60% at 50% 0%, rgba(220,20,60,0.18) 0%, rgba(139,0,0,0.08) 35%, transparent 65%), ' +
+          'radial-gradient(ellipse 50% 40% at 85% 50%, rgba(79,195,247,0.06) 0%, transparent 50%), ' +
+          'linear-gradient(180deg, #03010A 0%, #0A0008 50%, #03010A 100%)',
+        'spider-card':
+          'linear-gradient(135deg, rgba(220,20,60,0.08) 0%, rgba(139,0,0,0.04) 50%, rgba(255,255,255,0.02) 100%)',
+        'spider-nav':
+          'linear-gradient(180deg, rgba(10,0,8,0.98) 0%, rgba(26,16,32,0.95) 100%)',
+        'crimson-glow':
+          'radial-gradient(circle at center, rgba(220,20,60,0.2) 0%, transparent 70%)',
         'hero-gradient':
-          'radial-gradient(ellipse 80% 60% at 50% -10%, rgba(124,58,237,0.35) 0%, transparent 60%), ' +
-          'radial-gradient(ellipse 60% 40% at 90% 40%, rgba(0,229,255,0.2) 0%, transparent 50%), ' +
-          'linear-gradient(180deg, #050810 0%, #0a0f1e 100%)',
-        'card-glass':
-          'linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)',
-        'cyan-glow':
-          'radial-gradient(circle at center, rgba(0,229,255,0.15) 0%, transparent 70%)',
+          'radial-gradient(ellipse 100% 80% at 50% -5%, rgba(220,20,60,0.25) 0%, rgba(139,0,0,0.1) 30%, transparent 60%)',
       },
       fontFamily: {
-        sans:  ['Inter', 'system-ui', 'sans-serif'],
-        mono:  ['JetBrains Mono', 'Fira Code', 'monospace'],
-        display: ['Inter', 'system-ui', 'sans-serif'],
+        sans:    ['Inter', 'system-ui', 'sans-serif'],
+        display: ['Orbitron', 'Inter', 'system-ui', 'sans-serif'],
+        mono:    ['JetBrains Mono', 'Fira Code', 'monospace'],
       },
       borderRadius: {
         '2xl': '1rem',
@@ -70,51 +65,117 @@ module.exports = {
         '4xl': '2rem',
       },
       boxShadow: {
-        'glass':     '0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255,255,255,0.06)',
-        'glass-lg':  '0 20px 60px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255,255,255,0.08)',
-        'cyan-glow': '0 0 30px rgba(0,229,255,0.3), 0 0 60px rgba(0,229,255,0.1)',
-        'cyan-sm':   '0 0 12px rgba(0,229,255,0.4)',
-        'purple-glow': '0 0 30px rgba(124,58,237,0.3)',
-        'card':      '0 4px 24px rgba(0,0,0,0.4)',
+        'spider':        '0 0 20px rgba(220,20,60,0.3), 0 0 60px rgba(139,0,0,0.15), inset 0 1px 0 rgba(220,20,60,0.1)',
+        'spider-lg':     '0 0 40px rgba(220,20,60,0.4), 0 0 80px rgba(139,0,0,0.2)',
+        'spider-sm':     '0 0 10px rgba(220,20,60,0.4)',
+        'electric':      '0 0 20px rgba(79,195,247,0.3), 0 0 40px rgba(79,195,247,0.1)',
+        'glass':         '0 8px 32px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05)',
+        'glass-lg':      '0 20px 60px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.06)',
+        'camera-border': '0 0 0 1px rgba(220,20,60,0.3), 0 0 30px rgba(220,20,60,0.15), inset 0 0 30px rgba(139,0,0,0.05)',
+        'card':          '0 4px 24px rgba(0,0,0,0.5)',
       },
       animation: {
-        'pulse-slow':    'pulse 3s ease-in-out infinite',
-        'glow-pulse':    'glowPulse 2s ease-in-out infinite',
-        'scan-line':     'scanLine 2s linear infinite',
-        'float':         'float 6s ease-in-out infinite',
-        'slide-up':      'slideUp 0.5s ease-out forwards',
-        'fade-in':       'fadeIn 0.4s ease-out forwards',
-        'spin-slow':     'spin 8s linear infinite',
-        'radar':         'radar 3s linear infinite',
+        // Web animations
+        'web-pulse':    'webPulse 3s ease-in-out infinite',
+        'web-expand':   'webExpand 0.4s ease-out forwards',
+        'thread-draw':  'threadDraw 1.5s ease-out forwards',
+        // Particle / environment
+        'float':        'float 6s ease-in-out infinite',
+        'float-slow':   'float 10s ease-in-out infinite',
+        'particle':     'particle 8s linear infinite',
+        // UI feedback
+        'scan-line':    'scanLine 2.5s linear infinite',
+        'scan-fast':    'scanLine 1.2s linear infinite',
+        'pulse-slow':   'pulse 3s ease-in-out infinite',
+        'glow-pulse':   'glowPulse 2s ease-in-out infinite',
+        'crimson-pulse':'crimsonPulse 2s ease-in-out infinite',
+        // Motion
+        'slide-up':     'slideUp 0.6s cubic-bezier(0.16,1,0.3,1) forwards',
+        'slide-in-left':'slideInLeft 0.5s cubic-bezier(0.16,1,0.3,1) forwards',
+        'fade-in':      'fadeIn 0.5s ease-out forwards',
+        'zoom-in':      'zoomIn 0.4s cubic-bezier(0.16,1,0.3,1) forwards',
+        'spin-slow':    'spin 12s linear infinite',
+        'spin-medium':  'spin 6s linear infinite',
+        'radar':        'radar 3s linear infinite',
+        'blink':        'blink 1.5s step-end infinite',
+        'ring-expand':  'ringExpand 0.6s ease-out forwards',
+        'body-scan':    'bodyScan 3s ease-in-out infinite',
       },
       keyframes: {
-        glowPulse: {
-          '0%, 100%': { boxShadow: '0 0 10px rgba(0,229,255,0.3)' },
-          '50%':      { boxShadow: '0 0 30px rgba(0,229,255,0.6), 0 0 60px rgba(0,229,255,0.2)' },
+        webPulse: {
+          '0%, 100%': { opacity: '0.4', transform: 'scale(1)' },
+          '50%':      { opacity: '0.7', transform: 'scale(1.02)' },
         },
-        scanLine: {
-          '0%':   { transform: 'translateY(-100%)' },
-          '100%': { transform: 'translateY(100vh)' },
+        webExpand: {
+          from: { opacity: '0', transform: 'scale(0.8)' },
+          to:   { opacity: '1', transform: 'scale(1)' },
+        },
+        threadDraw: {
+          from: { strokeDashoffset: '1000' },
+          to:   { strokeDashoffset: '0' },
         },
         float: {
-          '0%, 100%': { transform: 'translateY(0px)' },
-          '50%':      { transform: 'translateY(-12px)' },
+          '0%, 100%': { transform: 'translateY(0px) rotate(0deg)' },
+          '33%':      { transform: 'translateY(-15px) rotate(2deg)' },
+          '66%':      { transform: 'translateY(-8px) rotate(-1deg)' },
+        },
+        particle: {
+          '0%':   { transform: 'translateY(100vh) translateX(0)', opacity: '0' },
+          '10%':  { opacity: '1' },
+          '90%':  { opacity: '1' },
+          '100%': { transform: 'translateY(-100px) translateX(50px)', opacity: '0' },
+        },
+        scanLine: {
+          '0%':   { transform: 'translateY(-5%)' },
+          '100%': { transform: 'translateY(105%)' },
+        },
+        glowPulse: {
+          '0%, 100%': { boxShadow: '0 0 10px rgba(220,20,60,0.3)' },
+          '50%':      { boxShadow: '0 0 30px rgba(220,20,60,0.7), 0 0 60px rgba(139,0,0,0.3)' },
+        },
+        crimsonPulse: {
+          '0%, 100%': { boxShadow: '0 0 0 0 rgba(220,20,60,0.4)' },
+          '50%':      { boxShadow: '0 0 0 12px rgba(220,20,60,0)' },
         },
         slideUp: {
-          from: { opacity: '0', transform: 'translateY(20px)' },
+          from: { opacity: '0', transform: 'translateY(30px)' },
           to:   { opacity: '1', transform: 'translateY(0)' },
+        },
+        slideInLeft: {
+          from: { opacity: '0', transform: 'translateX(-30px)' },
+          to:   { opacity: '1', transform: 'translateX(0)' },
         },
         fadeIn: {
           from: { opacity: '0' },
           to:   { opacity: '1' },
         },
+        zoomIn: {
+          from: { opacity: '0', transform: 'scale(0.9)' },
+          to:   { opacity: '1', transform: 'scale(1)' },
+        },
         radar: {
           from: { transform: 'rotate(0deg)' },
           to:   { transform: 'rotate(360deg)' },
         },
+        blink: {
+          '0%, 100%': { opacity: '1' },
+          '50%':      { opacity: '0' },
+        },
+        ringExpand: {
+          from: { transform: 'scale(0.5)', opacity: '1' },
+          to:   { transform: 'scale(2)',   opacity: '0' },
+        },
+        bodyScan: {
+          '0%, 100%': { opacity: '0.3' },
+          '50%':      { opacity: '0.9' },
+        },
       },
       backdropBlur: {
         xs: '2px',
+        '4xl': '40px',
+      },
+      transitionTimingFunction: {
+        'spring': 'cubic-bezier(0.16, 1, 0.3, 1)',
       },
     },
   },
