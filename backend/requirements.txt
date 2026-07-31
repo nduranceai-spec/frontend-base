@@ -9,9 +9,8 @@ websockets==13.1
 
 # ── Database ──────────────────────────────────────────────────────────────
 sqlalchemy==2.0.36
-# MySQL support (uncomment if using MySQL):
-# pymysql==1.1.1
-# cryptography==43.0.3
+psycopg2-binary==2.9.10
+alembic==1.14.0
 
 # ── Auth & Security ───────────────────────────────────────────────────────
 passlib[bcrypt]==1.7.4

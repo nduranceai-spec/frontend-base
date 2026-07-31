@@ -52,7 +52,7 @@ def _make_styles():
     }
 
 
-def generate_pdf(data: dict, session_id: str) -> str:
+def generate_pdf(data: dict, session_id: int) -> str:
     os.makedirs(settings.REPORTS_DIR, exist_ok=True)
     pdf_path = os.path.join(settings.REPORTS_DIR, f'report_{session_id}.pdf')
 
@@ -83,12 +83,12 @@ def generate_pdf(data: dict, session_id: str) -> str:
 
     user_name = getattr(user, 'name', 'Athlete') if user else 'Athlete'
     user_email = getattr(user, 'email', 'N/A') if user else 'N/A'
-    height = getattr(user, 'height_cm', 'N/A') if user else 'N/A'
-    weight = getattr(user, 'weight_kg', 'N/A') if user else 'N/A'
+    height = getattr(user, 'height', 'N/A') if user else 'N/A'
+    weight = getattr(user, 'weight', 'N/A') if user else 'N/A'
     exp = getattr(user, 'experience_level', 'N/A') if user else 'N/A'
 
     cover_data = [
-        ['Athlete', user_name, 'Session ID', session_id[:8].upper()],
+        ['Athlete', user_name, 'Session ID', str(session_id)],
         ['Email', user_email, 'Activity', str(session.activity_type).title()],
         ['Height', f'{height} cm', 'Duration', f'{session.duration_seconds:.0f}s'],
         ['Weight', f'{weight} kg', 'Frames', str(session.frames_analyzed)],
@@ -212,7 +212,7 @@ def generate_pdf(data: dict, session_id: str) -> str:
     return pdf_path
 
 
-def generate_csv(data: dict, session_id: str) -> str:
+def generate_csv(data: dict, session_id: int) -> str:
     os.makedirs(settings.REPORTS_DIR, exist_ok=True)
     csv_path = os.path.join(settings.REPORTS_DIR, f'report_{session_id}.csv')
 

@@ -21,12 +21,12 @@ class CreateSessionRequest(BaseModel):
     activity_type: str = "unknown"
     session_type: str = "live"  # live | upload
     camera_count: int = 3
-    height_cm: Optional[float] = 175.0
-    weight_kg: Optional[float] = 70.0
+    height: Optional[float] = 175.0
+    weight: Optional[float] = 70.0
 
 
 class FinalizeSessionRequest(BaseModel):
-    session_id: str
+    session_id: int
     duration_seconds: float
     frames_analyzed: int
     joint_angles_summary: Optional[dict] = None
@@ -40,7 +40,7 @@ class FinalizeSessionRequest(BaseModel):
 @router.post("/start")
 def start_session(
     payload: CreateSessionRequest,
-    user_id: str = Depends(get_current_user_id),
+    user_id: int = Depends(get_current_user_id),
     db: DBSession = Depends(get_db),
 ):
     """Create and start a new analysis session."""
@@ -64,7 +64,7 @@ def start_session(
 @router.post("/finalize")
 def finalize_session(
     payload: FinalizeSessionRequest,
-    user_id: str = Depends(get_current_user_id),
+    user_id: int = Depends(get_current_user_id),
     db: DBSession = Depends(get_db),
 ):
     """Finalize a session — save all metrics, generate AI summary, recommendations."""
@@ -133,8 +133,8 @@ def finalize_session(
         metrics=all_metrics,
         activity=payload.activity_type,
         user_name=user.name if user else "Athlete",
-        height_cm=float(user.height_cm) if user and user.height_cm else 175,
-        weight_kg=float(user.weight_kg) if user and user.weight_kg else 70,
+        height_cm=float(user.height) if user and user.height else 175,
+        weight_kg=float(user.weight) if user and user.weight else 70,
     )
 
     db.add(AiSummary(session_id=session.id, summary_text=ai_text))
@@ -167,7 +167,7 @@ def finalize_session(
 def get_session_history(
     limit: int = Query(default=20, le=100),
     offset: int = Query(default=0),
-    user_id: str = Depends(get_current_user_id),
+    user_id: int = Depends(get_current_user_id),
     db: DBSession = Depends(get_db),
 ):
     """Get paginated session history for the current user."""
@@ -176,7 +176,7 @@ def get_session_history(
     sessions = (
         db.query(Session)
         .filter(Session.user_id == user_id)
-        .order_by(desc(Session.created_at))
+        .order_by(desc(Session.started_at))
         .offset(offset)
         .limit(limit)
         .all()
@@ -201,8 +201,8 @@ def get_session_history(
 
 @router.get("/{session_id}")
 def get_session_detail(
-    session_id: str,
-    user_id: str = Depends(get_current_user_id),
+    session_id: int,
+    user_id: int = Depends(get_current_user_id),
     db: DBSession = Depends(get_db),
 ):
     """Get detailed data for a single session."""
@@ -256,8 +256,8 @@ def get_session_detail(
 
 @router.delete("/{session_id}")
 def delete_session(
-    session_id: str,
-    user_id: str = Depends(get_current_user_id),
+    session_id: int,
+    user_id: int = Depends(get_current_user_id),
     db: DBSession = Depends(get_db),
 ):
     """Delete a session and its analysis data."""

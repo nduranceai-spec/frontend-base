@@ -34,7 +34,7 @@ def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
 
 def get_current_user_id(
     credentials: HTTPAuthorizationCredentials = Depends(security)
-) -> str:
+) -> int:
     """FastAPI dependency: extract user_id from Authorization header."""
     token = credentials.credentials
     payload = decode_access_token(token)
@@ -50,7 +50,7 @@ def get_current_user_id(
 
 def get_optional_user_id(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False))
-) -> Optional[str]:
+) -> Optional[int]:
     """Optional auth — returns user_id if token present, else None."""
     if not credentials:
         return None

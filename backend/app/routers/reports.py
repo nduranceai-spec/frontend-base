@@ -23,8 +23,8 @@ router = APIRouter(prefix="/api/reports", tags=["Reports"])
 
 @router.post("/generate/{session_id}")
 def generate_report(
-    session_id: str,
-    user_id: str = Depends(get_current_user_id),
+    session_id: int,
+    user_id: int = Depends(get_current_user_id),
     db: DBSession = Depends(get_db),
 ):
     """Generate PDF + CSV reports for a session."""
@@ -85,8 +85,8 @@ def generate_report(
 
 @router.get("/download/pdf/{session_id}")
 def download_pdf(
-    session_id: str,
-    user_id: str = Depends(get_current_user_id),
+    session_id: int,
+    user_id: int = Depends(get_current_user_id),
     db: DBSession = Depends(get_db),
 ):
     """Download PDF report for a session."""
@@ -101,14 +101,14 @@ def download_pdf(
     return FileResponse(
         path=report.pdf_path,
         media_type="application/pdf",
-        filename=f"NDURANCE_AI_Report_{session_id[:8]}.pdf",
+        filename=f"NDURANCE_AI_Report_{session_id}.pdf",
     )
 
 
 @router.get("/download/csv/{session_id}")
 def download_csv(
-    session_id: str,
-    user_id: str = Depends(get_current_user_id),
+    session_id: int,
+    user_id: int = Depends(get_current_user_id),
     db: DBSession = Depends(get_db),
 ):
     """Download CSV data export for a session."""
@@ -123,5 +123,5 @@ def download_csv(
     return FileResponse(
         path=report.csv_path,
         media_type="text/csv",
-        filename=f"NDURANCE_AI_Data_{session_id[:8]}.csv",
+        filename=f"NDURANCE_AI_Data_{session_id}.csv",
     )

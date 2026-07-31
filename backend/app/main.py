@@ -112,7 +112,7 @@ def health_check():
         "mediapipe": mp_status,
         "opencv": cv_status,
         "gemini": "configured" if settings.GEMINI_API_KEY else "not_configured",
-        "database": settings.DATABASE_URL.split("://")[0],
+        "database": settings.SQLALCHEMY_DATABASE_URL.split("://")[0],
     }
 
 

@@ -1,31 +1,35 @@
 """
 routers/auth.py
 NDURANCE AI — Authentication Router
-Endpoints: Signup, Login, OTP Verify, Forgot Password, Me
+Endpoints: Signup (+ dev OTP), Verify OTP, Resend OTP, Login, Me, Update Profile,
+Change Password.
+
+OTP is dev-mode only: a random 6-digit code is generated and returned directly
+in the API response (`dev_otp`) so it can be typed into the frontend's OTP
+step without wiring up a real email/SMS provider. No Google/OAuth integration.
+
+Note: the hand-created `users` table has no role/avatar/experience_level/sport
+columns, so those (present in the original design) aren't persisted — the
+frontend simply falls back to its defaults for them. Out of scope for this
+change; ask if you want those added too.
 """
 import random
-import string
 from datetime import datetime, timedelta
 from typing import Optional
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import User, UserRole
+from app.models import User
 from app.utils.jwt_handler import create_access_token, get_current_user_id
-from app.config import settings
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
-# ── Password hashing ─────────────────────────────────────────────────────
-# Use bcrypt_sha256 to avoid bcrypt's 72-byte raw-password limit by
-# hashing with SHA-256 first (safer for arbitrary-length inputs).
-# Use PBKDF2-SHA256 for password hashing in dev to avoid native bcrypt
-# compatibility issues. PBKDF2-SHA256 is secure and has no 72-byte limit.
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
+
+OTP_EXPIRE_MINUTES = 10
 
 
 def hash_password(password: str) -> str:
@@ -36,11 +40,14 @@ def verify_password(plain: str, hashed: str) -> bool:
     return pwd_context.verify(plain, hashed)
 
 
-def generate_otp(length: int = 6) -> str:
-    return ''.join(random.choices(string.digits, k=length))
+def generate_otp() -> str:
+    """Random 6-digit code, e.g. '004821'."""
+    return f"{random.randint(0, 999999):06d}"
 
 
 # ── Request / Response Schemas ────────────────────────────────────────────
+# Field names (height_cm/weight_kg) match the frontend's existing payload —
+# stored internally in the shorter `height`/`weight` DB columns.
 
 class SignupRequest(BaseModel):
     name: str
@@ -48,49 +55,45 @@ class SignupRequest(BaseModel):
     password: str
     height_cm: Optional[float] = None
     weight_kg: Optional[float] = None
-    experience_level: str = "beginner"
+    experience_level: Optional[str] = None  # accepted, not persisted (no column)
+
 
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
 
-class OTPVerifyRequest(BaseModel):
+
+class VerifyOtpRequest(BaseModel):
     email: EmailStr
     otp: str
 
-class ForgotPasswordRequest(BaseModel):
+
+class ResendOtpRequest(BaseModel):
     email: EmailStr
 
-class ResetPasswordRequest(BaseModel):
-    email: EmailStr
-    otp: str
-    new_password: str
 
 class UpdateProfileRequest(BaseModel):
     name: Optional[str] = None
     height_cm: Optional[float] = None
     weight_kg: Optional[float] = None
-    experience_level: Optional[str] = None
-    sport: Optional[str] = None
+    experience_level: Optional[str] = None  # accepted, not persisted
+    sport: Optional[str] = None             # accepted, not persisted
 
 
-def _user_response(user: User, token: str) -> dict:
-    """Standard user response payload."""
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+def _user_public(user: User) -> dict:
     return {
-        "token": token,
-        "user": {
-            "id": user.id,
-            "name": user.name,
-            "email": user.email,
-            "role": user.role,
-            "is_verified": user.is_email_verified,
-            "height_cm": user.height_cm,
-            "weight_kg": user.weight_kg,
-            "experience_level": user.experience_level,
-            "sport": user.sport,
-            "avatar_url": user.avatar_url,
-            "created_at": str(user.created_at),
-        }
+        "id": user.id,
+        "name": user.name,
+        "email": user.email,
+        "is_verified": user.is_verified,
+        "height_cm": float(user.height) if user.height is not None else None,
+        "weight_kg": float(user.weight) if user.weight is not None else None,
+        "created_at": str(user.created_at),
     }
 
 
@@ -98,47 +101,76 @@ def _user_response(user: User, token: str) -> dict:
 
 @router.post("/signup", status_code=status.HTTP_201_CREATED)
 def signup(payload: SignupRequest, db: Session = Depends(get_db)):
-    """Register a new NDURANCE AI user."""
-    # Check duplicate email
+    """Register a new user and issue a dev-mode OTP for email verification."""
     existing = db.query(User).filter(User.email == payload.email).first()
     if existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="An account with this email already exists."
+            detail="An account with this email already exists.",
         )
 
-    # Generate and store OTP for email verification
     otp = generate_otp()
-    otp_expires = datetime.utcnow() + timedelta(minutes=15)
-
     user = User(
         name=payload.name,
         email=payload.email,
-        password_hash=hash_password(payload.password),
-        height_cm=str(payload.height_cm) if payload.height_cm else None,
-        weight_kg=str(payload.weight_kg) if payload.weight_kg else None,
-        experience_level=payload.experience_level,
+        password=hash_password(payload.password),
+        height=payload.height_cm,
+        weight=payload.weight_kg,
+        is_verified=False,
         otp_code=otp,
-        otp_expires_at=otp_expires,
-        is_email_verified=False,
+        otp_expires_at=datetime.utcnow() + timedelta(minutes=OTP_EXPIRE_MINUTES),
     )
 
     db.add(user)
     db.commit()
     db.refresh(user)
 
-    token = create_access_token({"sub": user.id, "email": user.email, "role": user.role})
-
-    # TODO: Send OTP email when SMTP is configured
-    print(f"[OTP] User {user.email} OTP: {otp}")  # Dev only — remove in prod
-
     return {
-        **_user_response(user, token),
-        "message": "Account created. Please verify your email with the OTP sent.",
-        "otp_required": True,
-        # Dev only — remove in prod:
-        "dev_otp": otp if settings.DEBUG else None,
+        "message": "Account created. Enter the OTP below to verify your email.",
+        "dev_otp": otp,
     }
+
+
+@router.post("/verify-otp")
+def verify_otp(payload: VerifyOtpRequest, db: Session = Depends(get_db)):
+    """Verify a signup OTP."""
+    user = db.query(User).filter(User.email == payload.email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    if user.is_verified:
+        return {"message": "Email already verified."}
+
+    if not user.otp_code or user.otp_code != payload.otp:
+        raise HTTPException(status_code=400, detail="Incorrect OTP.")
+
+    if not user.otp_expires_at or user.otp_expires_at < datetime.utcnow():
+        raise HTTPException(status_code=400, detail="OTP expired. Request a new one.")
+
+    user.is_verified = True
+    user.otp_code = None
+    user.otp_expires_at = None
+    db.commit()
+
+    return {"message": "Email verified successfully."}
+
+
+@router.post("/resend-otp")
+def resend_otp(payload: ResendOtpRequest, db: Session = Depends(get_db)):
+    """Generate and return a fresh dev-mode OTP."""
+    user = db.query(User).filter(User.email == payload.email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    if user.is_verified:
+        return {"message": "Email already verified."}
+
+    otp = generate_otp()
+    user.otp_code = otp
+    user.otp_expires_at = datetime.utcnow() + timedelta(minutes=OTP_EXPIRE_MINUTES)
+    db.commit()
+
+    return {"message": "New OTP generated.", "dev_otp": otp}
 
 
 @router.post("/login")
@@ -146,161 +178,78 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
     """Authenticate user with email and password."""
     user = db.query(User).filter(User.email == payload.email).first()
 
-    if not user or not user.password_hash:
+    if not user or not verify_password(payload.password, user.password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password."
+            detail="Invalid email or password.",
         )
 
-    if not verify_password(payload.password, user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password."
-        )
-
-    if not user.is_active:
+    if not user.is_verified:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account is deactivated. Contact support."
+            detail="Please verify your email with the OTP before logging in.",
         )
 
-    token = create_access_token({"sub": user.id, "email": user.email, "role": user.role})
+    token = create_access_token({"sub": user.id, "email": user.email})
 
     return {
-        **_user_response(user, token),
+        "token": token,
+        "user": _user_public(user),
         "message": "Login successful.",
     }
 
 
-@router.post("/verify-otp")
-def verify_otp(payload: OTPVerifyRequest, db: Session = Depends(get_db)):
-    """Verify email OTP for account activation."""
-    user = db.query(User).filter(User.email == payload.email).first()
-
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found.")
-
-    if user.is_email_verified:
-        return {"message": "Email already verified."}
-
-    if not user.otp_code or user.otp_code != payload.otp:
-        raise HTTPException(status_code=400, detail="Invalid OTP code.")
-
-    if user.otp_expires_at and datetime.utcnow() > user.otp_expires_at:
-        raise HTTPException(status_code=400, detail="OTP has expired. Request a new one.")
-
-    user.is_email_verified = True
-    user.otp_code = None
-    user.otp_expires_at = None
-    db.commit()
-
-    return {"message": "Email verified successfully! Your account is now active."}
-
-
-@router.post("/resend-otp")
-def resend_otp(payload: ForgotPasswordRequest, db: Session = Depends(get_db)):
-    """Resend OTP to email for verification."""
-    user = db.query(User).filter(User.email == payload.email).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found.")
-
-    otp = generate_otp()
-    user.otp_code = otp
-    user.otp_expires_at = datetime.utcnow() + timedelta(minutes=15)
-    db.commit()
-
-    print(f"[OTP] Resent to {user.email}: {otp}")
-
-    return {
-        "message": "OTP resent. Check your email.",
-        "dev_otp": otp if settings.DEBUG else None,
-    }
-
-
-@router.post("/forgot-password")
-def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db)):
-    """Initiate password reset by sending OTP."""
-    user = db.query(User).filter(User.email == payload.email).first()
-
-    # Don't reveal if email exists (security)
-    if user:
-        otp = generate_otp()
-        user.otp_code = otp
-        user.otp_expires_at = datetime.utcnow() + timedelta(minutes=15)
-        db.commit()
-        print(f"[Password Reset OTP] {user.email}: {otp}")
-
-    return {
-        "message": "If this email is registered, a reset code has been sent.",
-        "dev_otp": user.otp_code if user and settings.DEBUG else None,
-    }
-
-
-@router.post("/reset-password")
-def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db)):
-    """Reset password with OTP verification."""
-    user = db.query(User).filter(User.email == payload.email).first()
-
-    if not user or not user.otp_code:
-        raise HTTPException(status_code=400, detail="Invalid reset request.")
-
-    if user.otp_code != payload.otp:
-        raise HTTPException(status_code=400, detail="Invalid OTP.")
-
-    if user.otp_expires_at and datetime.utcnow() > user.otp_expires_at:
-        raise HTTPException(status_code=400, detail="OTP expired. Request a new one.")
-
-    if len(payload.new_password) < 8:
-        raise HTTPException(status_code=400, detail="Password must be at least 8 characters.")
-
-    user.password_hash = hash_password(payload.new_password)
-    user.otp_code = None
-    user.otp_expires_at = None
-    db.commit()
-
-    return {"message": "Password reset successfully. Please log in with your new password."}
-
-
 @router.get("/me")
-def get_me(user_id: str = Depends(get_current_user_id), db: Session = Depends(get_db)):
+def get_me(user_id: int = Depends(get_current_user_id), db: Session = Depends(get_db)):
     """Get current authenticated user profile."""
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
-
-    return {
-        "id": user.id,
-        "name": user.name,
-        "email": user.email,
-        "role": user.role,
-        "is_verified": user.is_email_verified,
-        "height_cm": user.height_cm,
-        "weight_kg": user.weight_kg,
-        "experience_level": user.experience_level,
-        "sport": user.sport,
-        "avatar_url": user.avatar_url,
-        "created_at": str(user.created_at),
-    }
+    return _user_public(user)
 
 
 @router.patch("/profile")
 def update_profile(
     payload: UpdateProfileRequest,
-    user_id: str = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
 ):
     """Update user profile fields."""
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
 
-    if payload.name: user.name = payload.name
-    if payload.height_cm: user.height_cm = str(payload.height_cm)
-    if payload.weight_kg: user.weight_kg = str(payload.weight_kg)
-    if payload.experience_level: user.experience_level = payload.experience_level
-    if payload.sport: user.sport = payload.sport
+    if payload.name is not None:
+        user.name = payload.name
+    if payload.height_cm is not None:
+        user.height = payload.height_cm
+    if payload.weight_kg is not None:
+        user.weight = payload.weight_kg
 
     db.commit()
     db.refresh(user)
 
-    return {"message": "Profile updated.", "user": {"name": user.name, "sport": user.sport}}
+    return {"message": "Profile updated.", "user": _user_public(user)}
+
+
+@router.post("/change-password")
+def change_password(
+    payload: ChangePasswordRequest,
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    """Change password — requires the current password."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    if not verify_password(payload.current_password, user.password):
+        raise HTTPException(status_code=401, detail="Current password is incorrect.")
+
+    if len(payload.new_password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters.")
+
+    user.password = hash_password(payload.new_password)
+    db.commit()
+
+    return {"message": "Password changed successfully."}

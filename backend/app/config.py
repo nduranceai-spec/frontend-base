@@ -14,10 +14,31 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     FRONTEND_URL: str = "http://localhost:3000"
 
-    # ── Database ─────────────────────────────────────────────────────
-    # SQLite (default) — change to MySQL URL for production
-    DATABASE_URL: str = "sqlite:///./ndurance.db"
-    # MySQL example: "mysql+pymysql://user:pass@localhost:3306/ndurance_ai"
+    # ── Database (PostgreSQL) ─────────────────────────────────────────
+    DATABASE_URL: Optional[str] = None
+
+    POSTGRES_USER: str = "ndur_user"
+    POSTGRES_PASSWORD: str = ""
+    POSTGRES_HOST: str = "localhost"
+    POSTGRES_PORT: int = 5432
+    POSTGRES_DB: str = "ndur_db"
+
+    DB_POOL_SIZE: int = 10
+    DB_MAX_OVERFLOW: int = 20
+    DB_POOL_TIMEOUT: int = 30
+    DB_POOL_RECYCLE: int = 1800
+
+    @property
+    def SQLALCHEMY_DATABASE_URL(self) -> str:
+        if self.DATABASE_URL:
+            return self.DATABASE_URL
+        auth = self.POSTGRES_USER
+        if self.POSTGRES_PASSWORD:
+            auth += f":{self.POSTGRES_PASSWORD}"
+        return (
+            f"postgresql+psycopg2://{auth}"
+            f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        )
 
     # ── Security ─────────────────────────────────────────────────────
     SECRET_KEY: str = "ndurance-ai-super-secret-key-change-in-production"

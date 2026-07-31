@@ -1,52 +1,41 @@
 """
 models/user.py
 NDURANCE AI — User ORM Model
+
+Matches the hand-created `users` table exactly (user_id/name/email/password/
+age/height/weight/created_at). The Python attribute is still called `.id`
+(mapped to the `user_id` column) so the rest of the codebase — JWT claims,
+routers — doesn't need to change every reference.
 """
-from sqlalchemy import Column, String, Boolean, DateTime, Enum, Text
+from sqlalchemy import Column, Integer, String, Numeric, DateTime, Boolean
+from sqlalchemy.sql import expression
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-import uuid
 from app.database import Base
-import enum
-
-
-class UserRole(str, enum.Enum):
-    athlete = "athlete"
-    coach = "coach"
-    admin = "admin"
 
 
 class User(Base):
     __tablename__ = "users"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    name = Column(String(120), nullable=False)
-    email = Column(String(255), unique=True, nullable=False, index=True)
-    password_hash = Column(String(255), nullable=True)  # Null for Google OAuth users
-    role = Column(Enum(UserRole), default=UserRole.athlete, nullable=False)
-
-    # Profile
-    height_cm = Column(String(10), nullable=True)
-    weight_kg = Column(String(10), nullable=True)
-    experience_level = Column(String(50), default="beginner")
-    sport = Column(String(100), nullable=True)
-    avatar_url = Column(String(500), nullable=True)
-
-    # OAuth
-    google_id = Column(String(255), unique=True, nullable=True)
-
-    # OTP
-    otp_code = Column(String(10), nullable=True)
-    otp_expires_at = Column(DateTime, nullable=True)
-    is_email_verified = Column(Boolean, default=False)
-
-    # Account state
-    is_active = Column(Boolean, default=True)
+    id = Column("user_id", Integer, primary_key=True, autoincrement=True)
+    name = Column(String(100), nullable=False)
+    email = Column(String(150), unique=True, nullable=False, index=True)
+    password = Column(String(255), nullable=False)  # bcrypt/pbkdf2 hash, not plaintext
+    age = Column(Integer, nullable=True)
+    height = Column(Numeric(5, 2), nullable=True)  # cm
+    weight = Column(Numeric(5, 2), nullable=True)  # kg
     created_at = Column(DateTime, server_default=func.now())
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    # ── Added back for the frontend's built-in OTP verification step ──
+    # (not in the original hand-created DDL — additive only, nothing above changed)
+    is_verified = Column(Boolean, nullable=False, default=False, server_default=expression.false())
+    otp_code = Column(String(6), nullable=True)
+    otp_expires_at = Column(DateTime, nullable=True)
 
     # Relationships
+    videos = relationship("Video", back_populates="user", cascade="all, delete-orphan")
     sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan")
+    reports = relationship("Report", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self):
-        return f"<User {self.email} ({self.role})>"
+        return f"<User {self.email}>"

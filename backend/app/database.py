@@ -1,39 +1,27 @@
 """
 database.py
 NDURANCE AI — SQLAlchemy Database Engine
-Supports SQLite (dev) and MySQL (production).
+PostgreSQL only.
 """
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from app.config import settings
 import os
 
-# Create reports and snapshots directories
 os.makedirs(settings.REPORTS_DIR, exist_ok=True)
 os.makedirs(settings.SNAPSHOTS_DIR, exist_ok=True)
 
-# ── Engine Setup ────────────────────────────────────────────────────────
-connect_args = {}
-if settings.DATABASE_URL.startswith("sqlite"):
-    connect_args = {"check_same_thread": False}
-
 engine = create_engine(
-    settings.DATABASE_URL,
-    connect_args=connect_args,
+    settings.SQLALCHEMY_DATABASE_URL,
+    pool_size=settings.DB_POOL_SIZE,
+    max_overflow=settings.DB_MAX_OVERFLOW,
+    pool_timeout=settings.DB_POOL_TIMEOUT,
+    pool_recycle=settings.DB_POOL_RECYCLE,
+    pool_pre_ping=True,
     echo=settings.DEBUG,
 )
 
-# Enable WAL mode for SQLite concurrency
-if settings.DATABASE_URL.startswith("sqlite"):
-    @event.listens_for(engine, "connect")
-    def set_sqlite_pragma(dbapi_connection, connection_record):
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA journal_mode=WAL")
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
-
-# ── Session Factory ─────────────────────────────────────────────────────
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # ── Base Model ──────────────────────────────────────────────────────────
