@@ -1,21 +1,26 @@
 'use client';
 // app/dashboard/history/page.tsx — Session History
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import GlassCard from '@/components/ui/GlassCard';
 import SpiderButton from '@/components/ui/SpiderButton';
-
-const sessions = [
-  { id: 'SES-001', date: '2026-07-30', time: '14:32', type: 'Treadmill Run', duration: '12:45', score: 87, status: 'Complete' },
-  { id: 'SES-002', date: '2026-07-30', time: '11:15', type: 'Warm-up Analysis', duration: '05:30', score: 92, status: 'Complete' },
-  { id: 'SES-003', date: '2026-07-29', time: '16:00', type: 'Sprint Mechanics', duration: '08:20', score: 79, status: 'Complete' },
-  { id: 'SES-004', date: '2026-07-29', time: '09:10', type: 'Long Run Gait', duration: '22:10', score: 85, status: 'Complete' },
-  { id: 'SES-005', date: '2026-07-28', time: '15:45', type: 'Recovery Run', duration: '18:00', score: 90, status: 'Complete' },
-];
+import { sessionsApi } from '@/lib/api';
+import { Session } from '@/types';
 
 const scoreColor = (s: number) => s >= 90 ? 'text-green-400' : s >= 80 ? 'text-spider-scarlet' : 'text-yellow-400';
 
 export default function HistoryPage() {
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    sessionsApi.getHistory()
+      .then((response) => setSessions(response.data.sessions || []))
+      .catch(() => setSessions([]))
+      .finally(() => setLoading(false));
+  }, []);
+
   return (
     <div className="p-6 md:p-8 max-w-5xl">
       <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between mb-8 flex-wrap gap-4">
@@ -29,6 +34,8 @@ export default function HistoryPage() {
       </motion.div>
 
       <div className="space-y-3">
+        {loading && <p className="text-xs font-mono text-spider-dim">Loading session history...</p>}
+        {!loading && !sessions.length && <GlassCard className="p-6"><p className="text-sm text-spider-dim">No sessions recorded yet.</p></GlassCard>}
         {sessions.map((s, i) => (
           <GlassCard key={s.id} delay={i * 0.07} className="p-5">
             <div className="flex items-center justify-between flex-wrap gap-3">
@@ -37,16 +44,16 @@ export default function HistoryPage() {
                   <span className="text-spider-scarlet text-lg">◉</span>
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-spider-white">{s.type}</p>
-                  <p className="text-[10px] font-mono text-spider-dim">{s.id} · {s.date} · {s.time} · {s.duration}</p>
+                  <p className="text-sm font-semibold text-spider-white capitalize">{s.activity_type}</p>
+                  <p className="text-[10px] font-mono text-spider-dim">#{s.id} · {new Date(s.created_at).toLocaleString()} · {Math.round(s.duration_seconds || 0)}s</p>
                 </div>
               </div>
               <div className="flex items-center gap-4">
                 <div className="text-right">
-                  <p className={`font-display text-xl font-black ${scoreColor(s.score)}`}>{s.score}</p>
+                  <p className={`font-display text-xl font-black ${scoreColor(s.overall_score)}`}>{s.overall_score > 0 ? Math.round(s.overall_score) : '—'}</p>
                   <p className="text-[9px] font-mono text-spider-dim">SCORE</p>
                 </div>
-                <Link href="/dashboard/reports">
+                <Link href={`/dashboard/history/${s.id}`}>
                   <SpiderButton variant="ghost" size="sm">View</SpiderButton>
                 </Link>
               </div>

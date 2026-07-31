@@ -4,21 +4,34 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import GlassCard from '@/components/ui/GlassCard';
 import SpiderButton from '@/components/ui/SpiderButton';
-
-const widgets = [
-  { label: 'Posture Score', value: '87', unit: '/100', trend: '+4', color: 'text-spider-scarlet' },
-  { label: 'Sessions Today', value: '3', unit: '', trend: '+1', color: 'text-spider-electric' },
-  { label: 'Symmetry Index', value: '92%', unit: '', trend: '+2%', color: 'text-green-400' },
-  { label: 'AI Confidence', value: '99.1%', unit: '', trend: '—', color: 'text-spider-scarlet' },
-];
-
-const activity = [
-  { time: '14:32', session: 'Treadmill Run · 5km', score: 87, status: 'Completed' },
-  { time: '11:15', session: 'Warm-up Analysis', score: 92, status: 'Completed' },
-  { time: '09:00', session: 'Sprint Mechanics', score: 79, status: 'Completed' },
-];
+import { useEffect, useState } from 'react';
+import { sessionsApi } from '@/lib/api';
+import { Session } from '@/types';
 
 export default function DashboardPage() {
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    sessionsApi.getHistory()
+      .then((response) => setSessions(response.data.sessions || []))
+      .catch(() => setSessions([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const today = new Date().toDateString();
+  const todaySessions = sessions.filter((session) => new Date(session.created_at).toDateString() === today);
+  const scoredSessions = sessions.filter((session) => typeof session.overall_score === 'number' && session.overall_score > 0);
+  const latest = scoredSessions[0];
+  const averageScore = scoredSessions.length
+    ? Math.round(scoredSessions.reduce((total, session) => total + session.overall_score, 0) / scoredSessions.length)
+    : null;
+  const widgets = [
+    { label: 'Latest Score', value: latest ? String(Math.round(latest.overall_score)) : '—', unit: latest ? '/100' : '', trend: latest ? 'Latest analysis' : 'No analysis yet', color: 'text-spider-scarlet' },
+    { label: 'Sessions Today', value: String(todaySessions.length), unit: '', trend: todaySessions.length ? 'Recorded today' : 'No sessions today', color: 'text-spider-electric' },
+    { label: 'Average Score', value: averageScore ? String(averageScore) : '—', unit: averageScore ? '/100' : '', trend: scoredSessions.length ? `${scoredSessions.length} scored session${scoredSessions.length === 1 ? '' : 's'}` : 'No scored sessions', color: 'text-green-400' },
+    { label: 'AI Confidence', value: '—', unit: '', trend: 'Available after analysis', color: 'text-spider-scarlet' },
+  ];
   return (
     <div className="p-6 md:p-8 max-w-7xl">
       {/* Header */}
@@ -69,7 +82,9 @@ export default function DashboardPage() {
         <GlassCard className="p-6 lg:col-span-2">
           <p className="text-[10px] font-mono text-spider-scarlet tracking-widest mb-5 uppercase">Recent Sessions</p>
           <div className="space-y-3">
-            {activity.map((a, i) => (
+            {loading && <p className="text-xs font-mono text-spider-dim">Loading sessions...</p>}
+            {!loading && !sessions.length && <p className="text-xs font-mono text-spider-dim">No analysis sessions yet. Start a test to see real results here.</p>}
+            {sessions.slice(0, 3).map((a, i) => (
               <motion.div
                 key={i}
                 initial={{ opacity: 0, x: 20 }}
@@ -80,12 +95,12 @@ export default function DashboardPage() {
                 <div className="flex items-center gap-3">
                   <div className="w-1.5 h-8 bg-spider-scarlet/60 rounded-full" />
                   <div>
-                    <p className="text-sm text-spider-white font-medium">{a.session}</p>
-                    <p className="text-[10px] font-mono text-spider-dim">{a.time} · {a.status}</p>
+                    <p className="text-sm text-spider-white font-medium">{a.activity_type}</p>
+                      <p className="text-[10px] font-mono text-spider-dim">{new Date(a.created_at).toLocaleString()} · {a.session_type}</p>
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="font-display text-lg font-bold text-spider-scarlet">{a.score}</p>
+                  <p className="font-display text-lg font-bold text-spider-scarlet">{a.overall_score > 0 ? Math.round(a.overall_score) : '—'}</p>
                   <p className="text-[10px] font-mono text-spider-dim">SCORE</p>
                 </div>
               </motion.div>

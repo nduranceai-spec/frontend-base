@@ -1,0 +1,4 @@
+ user_id | name | email | age | height | weight | created_at | is_verified | otp_code | otp_expires_at 
+---------+------+-------+-----+--------+--------+------------+-------------+----------+----------------
+(0 rows)
+

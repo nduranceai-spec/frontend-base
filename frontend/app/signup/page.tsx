@@ -5,18 +5,54 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import SpiderWebBackground from '@/components/ui/SpiderWebBackground';
 import SpiderButton from '@/components/ui/SpiderButton';
+import { authApi, getApiErrorMessage } from '@/lib/api';
 
 export default function SignupPage() {
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({ name: '', email: '', role: 'Athlete', password: '', confirm: '' });
   const [loading, setLoading] = useState(false);
+  const [devOtp, setDevOtp] = useState('');
+  const [otp, setOtp] = useState('');
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
 
   const handleNext = () => { if (step < 2) setStep(2); };
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (form.password !== form.confirm) {
+      setError('Passwords do not match.');
+      return;
+    }
+
     setLoading(true);
-    await new Promise(r => setTimeout(r, 1800));
-    window.location.href = '/dashboard';
+    setError('');
+    setMessage('');
+    try {
+      const response = await authApi.signup({
+        name: form.name,
+        email: form.email,
+        password: form.password,
+      });
+      setDevOtp(response.data.dev_otp || '');
+      setMessage('Account created. Enter the development OTP to verify your email.');
+    } catch (requestError) {
+      setError(getApiErrorMessage(requestError));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerify = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      await authApi.verifyOtp(form.email, otp);
+      window.location.href = '/login';
+    } catch (requestError) {
+      setError(getApiErrorMessage(requestError));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
@@ -108,6 +144,25 @@ export default function SignupPage() {
                     {loading ? 'Creating Access…' : 'Activate Access'}
                   </SpiderButton>
                 </div>
+                {message && <p className="text-xs font-mono text-green-400">{message}</p>}
+                {devOtp && (
+                  <div className="space-y-3 border border-spider-scarlet/20 rounded-xl p-4">
+                    <p className="text-xs font-mono text-spider-dim">Development OTP: <strong className="text-spider-white">{devOtp}</strong></p>
+                    <input
+                      id="signup-otp"
+                      value={otp}
+                      onChange={e => setOtp(e.target.value)}
+                      placeholder="Enter OTP"
+                      className="spider-input w-full px-4 py-3 rounded-xl font-mono text-sm"
+                      inputMode="numeric"
+                      maxLength={6}
+                    />
+                    <SpiderButton type="button" variant="electric" size="md" fullWidth loading={loading} onClick={handleVerify}>
+                      Verify Email
+                    </SpiderButton>
+                  </div>
+                )}
+                {error && <p className="text-xs font-mono text-spider-scarlet">{error}</p>}
               </motion.div>
             )}
           </form>

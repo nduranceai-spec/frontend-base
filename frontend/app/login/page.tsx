@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import SpiderWebBackground from '@/components/ui/SpiderWebBackground';
 import SpiderButton from '@/components/ui/SpiderButton';
+import { authApi, getApiErrorMessage } from '@/lib/api';
+import { saveAuth } from '@/lib/auth';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -16,14 +18,15 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError('');
-    // Simulate auth
-    await new Promise(r => setTimeout(r, 1800));
-    if (email && password) {
+    try {
+      const response = await authApi.login(email, password);
+      saveAuth(response.data.token, response.data.user);
       window.location.href = '/dashboard';
-    } else {
-      setError('Invalid credentials. Access denied.');
+    } catch (requestError) {
+      setError(getApiErrorMessage(requestError));
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (

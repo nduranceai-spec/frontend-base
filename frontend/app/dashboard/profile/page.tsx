@@ -1,9 +1,10 @@
 'use client';
 // app/dashboard/profile/page.tsx — Spider Track AI Athlete Profile
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import GlassCard from '@/components/ui/GlassCard';
 import SpiderButton from '@/components/ui/SpiderButton';
+import { authApi, getApiErrorMessage } from '@/lib/api';
 
 const EXPERIENCE_LEVELS = [
   { value: 'beginner', label: 'Beginner', desc: 'Just starting out' },
@@ -18,14 +19,22 @@ export default function ProfilePage() {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [error, setError] = useState('');
   const [form, setForm] = useState({
-    name: 'John Athlete',
-    email: 'athlete@spidertrack.ai',
-    height: '178',
-    weight: '72',
-    experience: 'intermediate',
-    sport: 'Running',
+    name: '', email: '', height: '', weight: '', experience: '', sport: '',
   });
+
+  useEffect(() => {
+    authApi.getMe()
+      .then(({ data }) => setForm((current) => ({
+        ...current,
+        name: data.name || '',
+        email: data.email || '',
+        height: data.height_cm == null ? '' : String(data.height_cm),
+        weight: data.weight_kg == null ? '' : String(data.weight_kg),
+      })))
+      .catch((requestError) => setError(getApiErrorMessage(requestError)));
+  }, []);
 
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm(f => ({ ...f, [k]: e.target.value }));
@@ -33,11 +42,20 @@ export default function ProfilePage() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
-    await new Promise(r => setTimeout(r, 1200));
-    setSaving(false);
-    setSuccess(true);
-    setEditing(false);
-    setTimeout(() => setSuccess(false), 3000);
+    setError('');
+    try {
+      await authApi.updateProfile({
+        name: form.name,
+        height_cm: form.height ? parseFloat(form.height) : undefined,
+        weight_kg: form.weight ? parseFloat(form.weight) : undefined,
+      });
+      setSuccess(true);
+      setEditing(false);
+    } catch (requestError) {
+      setError(getApiErrorMessage(requestError));
+    } finally {
+      setSaving(false);
+    }
   };
 
   const bmi = form.height && form.weight
@@ -91,7 +109,7 @@ export default function ProfilePage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {stats.map((s, i) => (
           <GlassCard key={s.label} delay={i * 0.07} className="p-4 text-center">
-            <p className={`font-display text-lg font-bold ${s.color} mb-1 capitalize`}>{s.value}</p>
+              <p className={`font-display text-lg font-bold ${s.color} mb-1 capitalize`}>{s.value || '—'}</p>
             <p className="text-[10px] font-mono text-spider-dim uppercase tracking-widest">{s.label}</p>
           </GlassCard>
         ))}
@@ -109,6 +127,7 @@ export default function ProfilePage() {
             ✓ Profile updated successfully
           </motion.div>
         )}
+        {error && <p className="mb-4 text-xs font-mono text-spider-scarlet">{error}</p>}
 
         <form onSubmit={handleSave} className="space-y-5">
           <div className="grid md:grid-cols-2 gap-4">
@@ -166,6 +185,7 @@ export default function ProfilePage() {
             <label className="block text-[10px] font-mono text-spider-scarlet tracking-widest mb-2 uppercase">Primary Sport</label>
             <select id="profile-sport" value={form.sport} onChange={set('sport')} disabled={!editing}
               className={`spider-input w-full px-4 py-3 rounded-xl text-sm bg-spider-black/70 ${!editing ? 'opacity-50 cursor-not-allowed' : ''}`}>
+              <option value="">Not provided</option>
               {SPORTS.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
