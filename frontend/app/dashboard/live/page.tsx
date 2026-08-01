@@ -41,13 +41,15 @@ const CAM_CONFIG: { camId: CamId; label: string }[] = [
   { camId: 'right', label: 'RIGHT CAMERA' },
 ];
 
+type VideoOrientation = 'portrait' | 'landscape';
+
 /* ─── Camera Panel ─── */
 const CameraPanel = memo(function CameraPanel({
-  camId, label, active, onRef, recording, fullscreen, testMode, error,
+  camId, label, active, onRef, recording, fullscreen, testMode, error, videoOrientation,
 }: {
   camId: CamId; label: string; active: boolean;
   onRef: (el: HTMLVideoElement | null) => void; recording: boolean; fullscreen: boolean;
-  testMode: boolean; error?: string;
+  testMode: boolean; error?: string; videoOrientation: VideoOrientation;
 }) {
   return (
     <div className="flex h-full flex-col gap-2 min-w-0">
@@ -73,7 +75,25 @@ const CameraPanel = memo(function CameraPanel({
           style={{ animation: 'scanLineAnim 2.5s linear infinite' }} />
       )}
 
-      <video ref={onRef} autoPlay muted playsInline className="w-full h-full object-cover" />
+      <div className="absolute inset-0 flex items-center justify-center overflow-hidden bg-spider-black">
+        <video
+          ref={onRef}
+          autoPlay
+          muted
+          playsInline
+          className="block bg-spider-black"
+          style={{
+            width: '100vh',
+            height: '100vw',
+            maxWidth: 'none',
+            maxHeight: 'none',
+            objectFit: 'cover',
+            objectPosition: 'center center',
+            transform: 'rotate(180deg)',
+            transformOrigin: 'center center',
+          }}
+        />
+      </div>
 
       {/* Standby placeholder */}
       {!active && (
@@ -152,6 +172,23 @@ export default function LiveCapturePage() {
   const [cameraErrors, setCameraErrors] = useState<Partial<Record<CamId, string>>>({});
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [testMode, setTestMode] = useState(false);
+  const [videoOrientation, setVideoOrientation] = useState<Record<CamId, VideoOrientation>>({
+    left: 'portrait',
+    back: 'portrait',
+    right: 'portrait',
+  });
+
+  const streamsRef = useRef<Partial<Record<CamId, MediaStream>>>({});
+  const activeStreamsRef = useRef<Partial<Record<CamId, MediaStream>>>({});
+  const videoOrientationRef = useRef<Record<CamId, VideoOrientation>>({
+    left: 'portrait',
+    back: 'portrait',
+    right: 'portrait',
+  });
+  const autoDetectionStartedRef = useRef(false);
+  const initInProgressRef = useRef(false);
+  const cameraInitLocksRef = useRef<Record<CamId, boolean>>({ left: false, back: false, right: false });
+  const playPromisesRef = useRef<Partial<Record<CamId, Promise<void>>>>({});
 
   // Generate session ID client-side only to avoid SSR hydration mismatch
   useEffect(() => { setSessionId(`#${String(Date.now()).slice(-4)}`); }, []);
@@ -165,10 +202,206 @@ export default function LiveCapturePage() {
   const timerRef = useRef<ReturnType<typeof setInterval>>();
   const cameraGridRef = useRef<HTMLDivElement | null>(null);
 
+  const applyCameraOrientation = useCallback((camId: CamId, stream: MediaStream | null, videoEl: HTMLVideoElement | null) => {
+    if (!stream || !videoEl) return;
+
+    const videoTrack = stream.getVideoTracks?.()[0];
+    const settings = videoTrack?.getSettings?.() || {};
+    const width = typeof settings.width === 'number' ? settings.width : undefined;
+    const height = typeof settings.height === 'number' ? settings.height : undefined;
+    const nextOrientation = width && height && width > height ? 'landscape' : 'portrait';
+    const currentOrientation = videoOrientationRef.current[camId] ?? 'portrait';
+
+    if (currentOrientation !== nextOrientation) {
+      videoOrientationRef.current[camId] = nextOrientation;
+      setVideoOrientation((current) => ({ ...current, [camId]: nextOrientation }));
+    }
+
+    videoEl.style.transform = 'rotate(180deg)';
+    videoEl.style.transformOrigin = 'center center';
+    videoEl.style.objectFit = 'contain';
+    videoEl.style.objectPosition = 'center center';
+  }, []);
+
+  const stopCameraStream = useCallback((camId: CamId, streamOverride?: MediaStream | null) => {
+    const stream = streamOverride ?? streamsRef.current[camId] ?? activeStreamsRef.current[camId];
+    if (stream) {
+      stream.getTracks().forEach((track) => {
+        track.stop();
+        console.log(`[camera] ${camId} cleanup executed`, { kind: track.kind });
+      });
+    }
+
+    const videoEl = videoRefs.current[camId];
+    if (videoEl) {
+      videoEl.pause?.();
+      if (videoEl.srcObject) {
+        console.log(`[camera] ${camId} cleanup executed before replacing srcObject`);
+      }
+      videoEl.srcObject = null;
+    }
+
+    if (streamsRef.current[camId] === stream) {
+      delete streamsRef.current[camId];
+    }
+    if (activeStreamsRef.current[camId] === stream) {
+      delete activeStreamsRef.current[camId];
+    }
+    if (playPromisesRef.current[camId]) {
+      playPromisesRef.current[camId] = undefined;
+    }
+  }, []);
+
+  const attachStreamToVideo = useCallback(async (camId: CamId, stream: MediaStream | null, videoEl: HTMLVideoElement | null) => {
+    if (!stream || !videoEl) return;
+
+    const currentStream = videoEl.srcObject instanceof MediaStream ? videoEl.srcObject : null;
+    if (currentStream === stream) {
+      console.log(`[camera] ${camId} srcObject already attached`);
+      return;
+    }
+
+    const pendingPlay = playPromisesRef.current[camId];
+    if (pendingPlay) {
+      console.log(`[camera] ${camId} play() still pending, waiting before replacing srcObject`);
+      try {
+        await pendingPlay;
+      } catch (error) {
+        console.warn(`[camera] ${camId} previous play() settled with error`, error);
+      }
+    }
+
+    const previousStream = activeStreamsRef.current[camId];
+    if (previousStream && previousStream !== stream) {
+      stopCameraStream(camId, previousStream);
+    }
+
+    videoEl.pause?.();
+    videoEl.srcObject = null;
+
+    console.log(`[camera] ${camId} srcObject assigned`);
+    videoEl.srcObject = stream;
+    videoEl.muted = true;
+    applyCameraOrientation(camId, stream, videoEl);
+
+    const waitForMetadata = () => new Promise<void>((resolve, reject) => {
+      const cleanup = () => {
+        videoEl.removeEventListener('loadedmetadata', onLoadedMetadata);
+        videoEl.removeEventListener('error', onError);
+      };
+      const onLoadedMetadata = () => {
+        console.log(`[camera] ${camId} loadedmetadata fired`);
+        cleanup();
+        resolve();
+      };
+      const onError = () => {
+        cleanup();
+        reject(new Error('video metadata failed'));
+      };
+
+      if (videoEl.readyState >= 2) {
+        cleanup();
+        resolve();
+        return;
+      }
+
+      videoEl.addEventListener('loadedmetadata', onLoadedMetadata, { once: true });
+      videoEl.addEventListener('error', onError, { once: true });
+    });
+
+    try {
+      await waitForMetadata();
+    } catch (error) {
+      console.error(`[camera] ${camId} metadata wait failed`, error);
+      return;
+    }
+
+    console.log(`[camera] ${camId} play() started`);
+    const playPromise = videoEl.play();
+    playPromisesRef.current[camId] = playPromise;
+
+    try {
+      await playPromise;
+      console.log(`[camera] ${camId} play() succeeded`);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        console.warn(`[camera] ${camId} play() aborted safely`, error);
+      } else {
+        console.error(`[camera] ${camId} play() failed`, error);
+      }
+    } finally {
+      if (playPromisesRef.current[camId] === playPromise) {
+        playPromisesRef.current[camId] = undefined;
+      }
+    }
+  }, [applyCameraOrientation, stopCameraStream]);
+
   const setVideoRef = useCallback((camId: CamId) => (el: HTMLVideoElement | null) => {
     videoRefs.current[camId] = el;
-    if (el && streams[camId]) el.srcObject = streams[camId] ?? null;
-  }, [streams]);
+    if (el) {
+      const stream = streamsRef.current[camId] ?? activeStreamsRef.current[camId];
+      if (stream) {
+        void attachStreamToVideo(camId, stream, el);
+      }
+    }
+  }, [attachStreamToVideo]);
+
+  const stopAllStreams = useCallback(() => {
+    console.log('[camera] stopping all previous MediaStream tracks');
+    (Object.keys(activeStreamsRef.current) as CamId[]).forEach((camId) => {
+      const stream = activeStreamsRef.current[camId];
+      if (stream) {
+        stopCameraStream(camId, stream);
+      }
+    });
+
+    Object.values(videoRefs.current).forEach((videoEl) => {
+      if (videoEl) {
+        videoEl.pause?.();
+        videoEl.srcObject = null;
+      }
+    });
+
+    streamsRef.current = {};
+    activeStreamsRef.current = {};
+  }, [stopCameraStream]);
+
+  const releaseCameraResources = useCallback(() => {
+    stopAllStreams();
+    setStreams({});
+    setCamActive({ left: false, back: false, right: false });
+    setCameraErrors({});
+  }, [stopAllStreams]);
+
+  const openCameraWithRetry = useCallback(async (camId: CamId, selectedDeviceId: string, cameraLabel: string) => {
+    const constraints: MediaStreamConstraints = {
+      video: {
+        deviceId: { exact: selectedDeviceId },
+        width: { ideal: 640 },
+        height: { ideal: 480 },
+        frameRate: { ideal: 30 },
+      },
+      audio: false,
+    };
+
+    console.log(`[camera] ${camId} stream creation started`, { selectedDeviceId, cameraLabel, constraints });
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      console.log(`[camera] ${camId} stream created successfully`, { selectedDeviceId, cameraLabel, stream });
+      return stream;
+    } catch (error) {
+      console.error(`[camera] ${camId} getUserMedia failed`, { selectedDeviceId, cameraLabel, error });
+      if (error instanceof DOMException && error.name === 'NotReadableError') {
+        console.warn(`[camera] ${camId} NotReadableError, retrying once`, error);
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        const retryStream = await navigator.mediaDevices.getUserMedia(constraints);
+        console.log(`[camera] ${camId} stream created successfully after retry`, { selectedDeviceId, cameraLabel, retryStream });
+        return retryStream;
+      }
+      throw error;
+    }
+  }, []);
 
   /* ── Camera Init ──
      Strategy: request permission once, enumerate ALL video devices,
@@ -176,91 +409,171 @@ export default function LiveCapturePage() {
      misidentifying cameras connected via USB hub.
   */
   const detectCameras = useCallback(async () => {
-    if (!navigator.mediaDevices?.enumerateDevices) return [];
-    const allDevices = await navigator.mediaDevices.enumerateDevices();
-    const videoDevices = allDevices.filter(d => d.kind === 'videoinput');
-    setDetectedCameras(videoDevices);
-    const detectedIds = new Set(videoDevices.map((device) => device.deviceId));
-    setCameraAssignments((current) => videoDevices.length === 3
-      ? { left: videoDevices[0].deviceId, back: videoDevices[1].deviceId, right: videoDevices[2].deviceId }
-      : {
-        left: detectedIds.has(current.left) ? current.left : '',
-        back: detectedIds.has(current.back) ? current.back : '',
-        right: detectedIds.has(current.right) ? current.right : '',
+    console.log('[camera] detectCameras invoked');
+    if (!navigator.mediaDevices?.enumerateDevices) {
+      console.warn('[camera] navigator.mediaDevices.enumerateDevices is unavailable');
+      setAiStatus('CAMERA DETECTION FAILED');
+      return [];
+    }
+
+    console.log('[camera] navigator.mediaDevices exists', !!navigator.mediaDevices);
+
+    try {
+      console.log('[camera] requesting camera permission before enumeration');
+      if (navigator.mediaDevices.getUserMedia) {
+        const permissionStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        permissionStream.getTracks().forEach((track) => track.stop());
+        console.log('[camera] permission granted');
+      }
+    } catch (permissionError) {
+      console.warn('[camera] permission request failed or was denied', permissionError);
+      setAiStatus('CAMERA PERMISSION REQUIRED');
+      return [];
+    }
+
+    try {
+      const allDevices = await navigator.mediaDevices.enumerateDevices();
+      console.log('[camera] all detected devices', allDevices);
+
+      const videoDevices = allDevices.filter((device: MediaDeviceInfo) => device.kind === 'videoinput');
+      const externalBrioDevices = videoDevices.filter((device) => {
+        const label = (device.label || '').toLowerCase();
+        const isInternal = label.includes('integrated') || label.includes('built-in') || label.includes('builtin') || label.includes('facetime') || label.includes('face time');
+        const isLogitechBrio = label.includes('logitech') && label.includes('brio');
+        return isLogitechBrio && !isInternal;
       });
-    return videoDevices;
+
+      console.log('[camera] filtered video devices', videoDevices);
+      console.log('[camera] filtered external BRIO devices', externalBrioDevices);
+
+      videoDevices.forEach((device) => {
+        const label = (device.label || '').toLowerCase();
+        const isInternal = label.includes('integrated') || label.includes('built-in') || label.includes('builtin') || label.includes('facetime') || label.includes('face time');
+        const isLogitechBrio = label.includes('logitech') && label.includes('brio');
+        if (!isLogitechBrio || isInternal) {
+          console.log('[camera] ignored non-BRIO or internal webcam', device.label || device.deviceId, device.deviceId);
+        }
+      });
+
+      setDetectedCameras(externalBrioDevices);
+      const nextAssignments = { left: '', back: '', right: '' } as Record<CamId, string>;
+      const brioIds = externalBrioDevices.map((device) => device.deviceId);
+
+      if (externalBrioDevices.length === 3) {
+        nextAssignments.left = brioIds[0];
+        nextAssignments.back = brioIds[1];
+        nextAssignments.right = brioIds[2];
+        console.log('[camera] auto-assigned BRIO devices', nextAssignments);
+        setAiStatus('3 BRIO CAMERAS READY');
+      } else {
+        console.warn('[camera] expected 3 external BRIO cameras, found', externalBrioDevices.length);
+        setAiStatus('Please connect 3 Logitech BRIO USB cameras.');
+      }
+
+      setCameraAssignments(nextAssignments);
+      console.log('[camera] final assignment state', nextAssignments);
+      return externalBrioDevices;
+    } catch (error) {
+      console.error('[camera] enumerateDevices failed', error);
+      setAiStatus('CAMERA DETECTION FAILED');
+      return [];
+    }
   }, []);
 
   useEffect(() => {
+    if (autoDetectionStartedRef.current) return;
+    autoDetectionStartedRef.current = true;
+    console.log('[camera] mounting live capture page, running initial detection once');
     void detectCameras();
   }, [detectCameras]);
 
   const initCameras = useCallback(async () => {
+    if (initInProgressRef.current) {
+      console.log('[camera] initialization already in progress, skipping duplicate call');
+      return;
+    }
+
+    initInProgressRef.current = true;
+    console.log('[camera] initCameras invoked');
     setTestMode(true);
     setAiStatus('INITIALIZING…');
-    setCamActive({ left: false, back: false, right: false });
     setCameraErrors({});
-
-    // Release previous browser camera locks before opening the selected USB devices.
-    Object.values(streams).forEach((stream) => stream?.getTracks().forEach((track) => track.stop()));
-    setStreams({});
+    await stopAllStreams();
 
     try {
-      // Detect devices first when the user has not used the detector yet.
       const videoDevices = detectedCameras.length ? detectedCameras : await detectCameras();
+      console.log('[camera] using devices for initialization', videoDevices);
 
       if (videoDevices.length === 0) {
         setAiStatus('NO CAMERAS FOUND');
         return;
       }
 
-      // Open each selected camera independently so every preview owns its stream.
-      const slots = CAM_CONFIG.slice(0, 3);
       const newStreams: Partial<Record<CamId, MediaStream>> = {};
       const usedDeviceIds = new Set<string>();
+      const slots = CAM_CONFIG.slice(0, 3);
 
       for (let i = 0; i < slots.length; i++) {
         const { camId } = slots[i];
-        const assignedDeviceId = cameraAssignments[camId] || videoDevices[i]?.deviceId;
-        const device = videoDevices.find(item => item.deviceId === assignedDeviceId) || videoDevices[i];
+        const desiredDeviceId = cameraAssignments[camId] || videoDevices[i]?.deviceId || '';
+        const candidateDevice = videoDevices.find((item) => item.deviceId === desiredDeviceId) || videoDevices[i];
+        const device = candidateDevice && !usedDeviceIds.has(candidateDevice.deviceId)
+          ? candidateDevice
+          : videoDevices.find((item) => !usedDeviceIds.has(item.deviceId));
+
         if (!device) {
+          console.warn(`[camera] no device available for ${camId}`);
           setCameraErrors((current) => ({ ...current, [camId]: 'No detected device assigned' }));
           continue;
         }
+
         if (usedDeviceIds.has(device.deviceId)) {
+          console.warn(`[camera] duplicate device id skipped for ${camId}`, device.deviceId);
           setCameraErrors((current) => ({ ...current, [camId]: 'This device is already assigned to another position' }));
           continue;
         }
+
         usedDeviceIds.add(device.deviceId);
+        console.log(`[camera] ${camId} selected deviceId=${device.deviceId} label=${device.label || 'Unknown camera'}`);
 
         try {
-          const stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              deviceId: { exact: device.deviceId },
-              width: { ideal: 1080 },
-              height: { ideal: 1920 },
-              frameRate: { ideal: 30 },
-            },
-            audio: false,
-          });
+          if (cameraInitLocksRef.current[camId]) {
+            console.warn(`[camera] ${camId} initialization already in progress, skipping duplicate request`);
+            continue;
+          }
+
+          cameraInitLocksRef.current[camId] = true;
+          const stream = await openCameraWithRetry(camId, device.deviceId, device.label || 'Unknown camera');
           newStreams[camId] = stream;
-          if (videoRefs.current[camId]) videoRefs.current[camId]!.srcObject = stream;
-          setCamActive(p => ({ ...p, [camId]: true }));
+          streamsRef.current[camId] = stream;
+          activeStreamsRef.current[camId] = stream;
+          const videoEl = videoRefs.current[camId];
+          if (videoEl) {
+            await attachStreamToVideo(camId, stream, videoEl);
+          }
+          setCamActive((current) => ({ ...current, [camId]: true }));
+          setStreams((current) => ({ ...current, [camId]: stream }));
+          cameraInitLocksRef.current[camId] = false;
         } catch (err) {
-          console.warn(`Camera slot ${i} (${device.label || device.deviceId}) failed:`, err);
+          console.error(`[camera] ${camId} stream init failed`, err);
           const reason = err instanceof DOMException ? err.name : 'Unable to open camera';
           setCameraErrors((current) => ({ ...current, [camId]: `${reason}: ${device.label || `device ${i + 1}`}` }));
+        } finally {
+          cameraInitLocksRef.current[camId] = false;
         }
       }
 
-      setStreams(newStreams);
       const count = Object.keys(newStreams).length;
+      console.log('[camera] final assignment state', cameraAssignments);
+      console.log('[camera] final stream state', newStreams);
       setAiStatus(count === 3 ? 'READY' : count > 0 ? `READY · ${count}/3 CAMS` : 'NO STREAM');
     } catch (err) {
       console.error('initCameras error:', err);
       setAiStatus('CAM ERROR');
+    } finally {
+      initInProgressRef.current = false;
     }
-  }, [cameraAssignments, detectedCameras, streams, detectCameras]);
+  }, [attachStreamToVideo, applyCameraOrientation, cameraAssignments, detectedCameras, stopAllStreams, detectCameras, openCameraWithRetry]);
 
   const startRecording = () => {
     setRecording(true);
@@ -269,7 +582,7 @@ export default function LiveCapturePage() {
     timerRef.current = setInterval(() => setElapsed(e => e + 1), 1000);
 
     CAM_CONFIG.forEach(({ camId }) => {
-      const stream = streams[camId];
+      const stream = streamsRef.current[camId] ?? streams[camId];
       if (!stream) return;
       chunks.current[camId] = [];
       try {
@@ -321,13 +634,27 @@ export default function LiveCapturePage() {
   };
 
   const handleDetectCameras = async () => {
+    console.log('[camera] Detect Cameras button clicked');
     setAiStatus('DETECTING CAMERAS…');
     try {
       const cameras = await detectCameras();
+      console.log('[camera] detectCameras returned', cameras);
       setAiStatus(cameras.length ? `${cameras.length} CAM${cameras.length === 1 ? '' : 'S'} DETECTED` : 'NO CAMERAS FOUND');
-    } catch {
+    } catch (error) {
+      console.error('[camera] detectCameras failed', error);
       setAiStatus('CAMERA DETECTION FAILED');
     }
+  };
+
+  const handleAssignmentChange = (camId: CamId, nextValue: string) => {
+    setCameraAssignments((current) => {
+      const isDuplicate = Object.entries(current).some(([position, deviceId]) => position !== camId && deviceId === nextValue && nextValue);
+      if (isDuplicate) {
+        console.warn('[camera] duplicate assignment prevented', { camId, nextValue });
+        return current;
+      }
+      return { ...current, [camId]: nextValue };
+    });
   };
 
   useEffect(() => {
@@ -337,6 +664,11 @@ export default function LiveCapturePage() {
   }, []);
 
   useEffect(() => () => clearInterval(timerRef.current), []);
+
+  useEffect(() => () => {
+    console.log('[camera] component unmounting, cleaning up streams');
+    stopAllStreams();
+  }, [stopAllStreams]);
 
   const fmt = (s: number) =>
     `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
@@ -360,7 +692,7 @@ export default function LiveCapturePage() {
                 <span className="shrink-0">{label.replace(' CAMERA', '')}</span>
                 <select
                   value={cameraAssignments[camId]}
-                  onChange={(event) => setCameraAssignments((current) => ({ ...current, [camId]: event.target.value }))}
+                  onChange={(event) => handleAssignmentChange(camId, event.target.value)}
                   className="spider-input min-w-0 w-full rounded-lg px-2 py-2 text-[9px] tracking-normal bg-spider-black/70"
                   aria-label={`Select device for ${label}`}
                 >
@@ -416,6 +748,7 @@ export default function LiveCapturePage() {
               fullscreen={isFullscreen}
               testMode={testMode}
               error={cameraErrors[camId]}
+              videoOrientation={videoOrientation[camId]}
             />
           ))}
         </div>
