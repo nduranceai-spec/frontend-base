@@ -9,16 +9,40 @@ import { authApi, getApiErrorMessage } from '@/lib/api';
 
 export default function SignupPage() {
   const [step, setStep] = useState(1);
-  const [form, setForm] = useState({ name: '', email: '', role: 'Athlete', password: '', confirm: '' });
+  const [form, setForm] = useState({ name: '', email: '', level: 'Beginner' as 'Beginner' | 'Intermediate' | 'Expert', age: '', password: '', confirm: '' });
   const [loading, setLoading] = useState(false);
   const [devOtp, setDevOtp] = useState('');
   const [otp, setOtp] = useState('');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [ageError, setAgeError] = useState('');
 
   const handleNext = () => { if (step < 2) setStep(2); };
+  const validateAge = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return false;
+
+    const numeric = Number(trimmed);
+    return Number.isInteger(numeric) && numeric >= 5 && numeric <= 100;
+  };
+
+  const handleAgeBlur = () => {
+    if (!validateAge(form.age)) {
+      setAgeError('Age must be between 5 and 100.');
+    } else {
+      setAgeError('');
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!validateAge(form.age)) {
+      setAgeError('Age must be between 5 and 100.');
+      setStep(1);
+      return;
+    }
+
+    setAgeError('');
     if (form.password !== form.confirm) {
       setError('Passwords do not match.');
       return;
@@ -57,6 +81,13 @@ export default function SignupPage() {
 
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm(f => ({ ...f, [k]: e.target.value }));
+
+  const handleAgeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value.replace(/\D/g, '');
+    setForm(f => ({ ...f, age: raw }));
+  };
+
+  const levels = ['Beginner', 'Intermediate', 'Expert'] as const;
 
   return (
     <div className="relative min-h-screen flex items-center justify-center bg-spider-void overflow-hidden py-10">
@@ -112,13 +143,46 @@ export default function SignupPage() {
                     placeholder="athlete@spidertrack.ai" className="spider-input w-full px-4 py-3.5 rounded-xl font-mono text-sm" required />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-mono text-spider-scarlet tracking-widest mb-2 uppercase">Role</label>
-                  <select id="signup-role" value={form.role} onChange={set('role')}
-                    className="spider-input w-full px-4 py-3.5 rounded-xl font-mono text-sm bg-spider-black/70">
-                    <option>Athlete</option>
-                    <option>Coach</option>
-                    <option>Lab Technician</option>
-                  </select>
+                  <label className="block text-[10px] font-mono text-spider-scarlet tracking-widest mb-2 uppercase">Level</label>
+                  <div className="flex flex-row gap-2">
+                    {levels.map((level) => {
+                      const selected = form.level === level;
+                      return (
+                        <motion.button
+                          key={level}
+                          type="button"
+                          aria-pressed={selected}
+                          onClick={() => setForm(f => ({ ...f, level }))}
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          animate={{ scale: selected ? 1.02 : 1 }}
+                          transition={{ type: 'spring', stiffness: 420, damping: 24 }}
+                          className={`flex-1 min-w-0 rounded-xl border px-3 py-3 text-[10px] font-mono font-semibold uppercase tracking-[0.2em] transition-all duration-300 ${selected
+                            ? 'border-spider-scarlet bg-gradient-to-r from-spider-scarlet via-spider-crimson to-spider-scarlet text-white shadow-[0_0_20px_rgba(220,20,60,0.35)]'
+                            : 'border-spider-scarlet/40 bg-spider-black/70 text-spider-dim shadow-[0_0_0_1px_rgba(220,20,60,0.15),0_0_18px_rgba(220,20,60,0.12)] hover:border-spider-scarlet hover:text-spider-white hover:shadow-[0_0_18px_rgba(220,20,60,0.24)]'}`}
+                        >
+                          {level}
+                        </motion.button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-mono text-spider-scarlet tracking-widest mb-2 uppercase">Age</label>
+                  <input
+                    id="signup-age"
+                    type="number"
+                    inputMode="numeric"
+                    min={5}
+                    max={100}
+                    value={form.age}
+                    onChange={handleAgeChange}
+                    onBlur={handleAgeBlur}
+                    placeholder="Enter your age"
+                    className="spider-input w-full px-4 py-3.5 rounded-xl font-mono text-sm"
+                    required
+                  />
+                  {ageError && <p className="mt-2 text-[10px] font-mono text-spider-scarlet">{ageError}</p>}
                 </div>
                 <SpiderButton id="signup-next" type="button" variant="primary" size="lg" fullWidth onClick={handleNext}>
                   Next Step →

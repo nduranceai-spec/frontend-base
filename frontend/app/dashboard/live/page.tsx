@@ -50,7 +50,7 @@ const CameraPanel = memo(function CameraPanel({
   testMode: boolean; error?: string;
 }) {
   return (
-    <div className="flex flex-col gap-2 min-w-0">
+    <div className="flex h-full flex-col gap-2 min-w-0">
       {/* Label row */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -62,13 +62,11 @@ const CameraPanel = memo(function CameraPanel({
 
       {/* Video frame */}
       <div
-        className={`relative ${fullscreen
-            ? 'h-full min-h-[260px]'
-      : testMode
-  ? 'w-full aspect-[9/16] min-h-[700px] max-h-[80vh]'
-      : 'aspect-video'
-      } bg-spider-black rounded-xl overflow-hidden web-border`}
-        >
+        className={`relative w-full ${fullscreen
+          ? 'h-full min-h-[260px]'
+          : 'aspect-[9/16] min-h-[320px] sm:min-h-[420px] md:h-[74vh] lg:h-[80vh]'
+        } bg-spider-black rounded-xl overflow-hidden web-border`}
+      >
       {/* Scan line while recording */}
       {recording && (
         <div className="absolute left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-spider-scarlet/80 to-transparent z-10"
@@ -344,12 +342,12 @@ export default function LiveCapturePage() {
     `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
   return (
-    <div className={`${testMode ? 'flex h-screen min-h-0 flex-col overflow-hidden' : ''} p-4 md:p-6 max-w-[1600px]`}>
+    <div className={`${testMode ? 'flex min-h-screen flex-col overflow-hidden' : 'min-h-screen'} p-4 md:p-6 max-w-[1600px] mx-auto overflow-x-hidden`}>
 
       {/* ── Header ── */}
       <motion.div
         initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-between mb-6 flex-wrap gap-4"
+        className="mb-4 flex flex-wrap items-center justify-between gap-4"
       >
         <div>
           <p className="text-[10px] font-mono text-spider-scarlet tracking-[0.3em] mb-1">PERFORMANCE LAB</p>
@@ -402,18 +400,10 @@ export default function LiveCapturePage() {
       <motion.div
         ref={cameraGridRef}
         layout
-        className={`${isFullscreen ? 'fixed inset-0 z-[100] h-screen w-screen overflow-auto p-5 md:p-8' : testMode ? 'flex min-h-0 flex-1 flex-col p-2 md:p-3' : 'p-2 md:p-3'} bg-spider-void`}
+        className={`${isFullscreen ? 'fixed inset-0 z-[100] h-screen w-screen overflow-auto p-5 md:p-8' : 'flex flex-col p-2 md:p-3'} bg-spider-void`}
       >
         <div
-          className={`${isFullscreen
-              ? 'h-[calc(100vh-76px)]'
-              : testMode
-                ? 'min-h-0 flex-1'
-                : ''
-            } grid ${testMode
-              ? 'grid-cols-3 gap-6 items-start'
-              : 'grid-cols-1 md:grid-cols-3'
-            }`}
+          className={`${isFullscreen ? 'h-[calc(100vh-76px)]' : 'min-h-[72vh] sm:min-h-[76vh] md:min-h-[78vh] lg:min-h-[84vh]'} grid ${isFullscreen ? 'grid-cols-3 gap-4 items-stretch' : 'grid-cols-1 gap-3 md:grid-cols-3 md:gap-4'}`}
         >
           {CAM_CONFIG.map(({ camId, label }) => (
             <CameraPanel
@@ -429,7 +419,7 @@ export default function LiveCapturePage() {
             />
           ))}
         </div>
-        <div className="flex justify-center mt-4">
+        <div className="mt-3 flex justify-center md:justify-start">
           <SpiderButton
             id="camera-fullscreen"
             variant="secondary"
@@ -444,9 +434,7 @@ export default function LiveCapturePage() {
       {/* ── Athlete Info + Controls ── */}
       <motion.div
         layout
-        animate={testMode ? { y: '110vh', opacity: 0 } : { y: 0, opacity: 1 }}
-        transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
-        className={`${testMode ? 'pointer-events-none absolute top-full left-0 right-0' : ''} grid md:grid-cols-2 gap-4`}
+        className="mt-6 grid gap-4 md:grid-cols-2"
       >
         <GlassCard className="p-6">
           <p className="text-[10px] font-mono text-spider-scarlet tracking-widest mb-4 uppercase">Athlete Info</p>
