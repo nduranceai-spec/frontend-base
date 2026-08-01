@@ -2,6 +2,7 @@
 // NDURANCE AI — Axios API Client
 
 import axios, { AxiosError, AxiosResponse } from 'axios';
+import { clearAuth, getToken } from '@/lib/auth';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -30,6 +31,16 @@ const getRequestUrl = (config?: any) => {
   return config.url || 'unknown';
 };
 
+const formatApiError = (info: ApiErrorInfo) => ({
+  method: info.method,
+  requestUrl: info.requestUrl,
+  status: info.status ?? null,
+  statusText: info.statusText ?? null,
+  responseData: info.responseData ?? null,
+  message: info.originalMessage,
+  isNetworkError: info.isNetworkError,
+});
+
 export const getApiErrorInfo = (error: AxiosError): ApiErrorInfo => {
   const config = error.config;
   const requestUrl = getRequestUrl(config);
@@ -49,7 +60,7 @@ export const getApiErrorInfo = (error: AxiosError): ApiErrorInfo => {
 
 api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
-    const token = localStorage.getItem('ndurance_token');
+    const token = getToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -75,21 +86,15 @@ api.interceptors.response.use(
   (error) => {
     if (axios.isAxiosError(error)) {
       const info = getApiErrorInfo(error);
-      console.error('[API] Error:', {
-        method: info.method,
-        requestUrl: info.requestUrl,
-        payload: info.payload,
-        status: info.status,
-        statusText: info.statusText,
-        responseData: info.responseData,
-        message: info.originalMessage,
-      });
+      const isSessionFailure = error.response?.status === 401 || error.response?.status === 403;
+      // Session failures are handled below; unexpected API failures remain visible.
+      if (!isSessionFailure) console.error('[API] Error:', formatApiError(info));
 
-      if (error.response?.status === 401) {
+      if (isSessionFailure) {
         if (typeof window !== 'undefined') {
-          localStorage.removeItem('ndurance_token');
-          localStorage.removeItem('ndurance_user');
-          window.location.href = '/login';
+          const isAuthPage = window.location.pathname === '/login' || window.location.pathname === '/signup';
+          clearAuth();
+          if (!isAuthPage) window.location.replace('/login');
         }
       }
     } else {

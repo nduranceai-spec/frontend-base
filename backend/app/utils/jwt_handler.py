@@ -45,7 +45,14 @@ def get_current_user_id(
             detail="Invalid or expired token",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    return payload["sub"]
+    try:
+        return int(payload["sub"])
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid user identity in token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
 
 def get_optional_user_id(

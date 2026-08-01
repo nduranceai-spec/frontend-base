@@ -19,6 +19,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr
 from passlib.context import CryptContext
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -43,6 +44,10 @@ def verify_password(plain: str, hashed: str) -> bool:
 def generate_otp() -> str:
     """Random 6-digit code, e.g. '004821'."""
     return f"{random.randint(0, 999999):06d}"
+
+
+def normalized_email(email: EmailStr) -> str:
+    return str(email).strip().lower()
 
 
 # ── Request / Response Schemas ────────────────────────────────────────────
@@ -102,7 +107,8 @@ def _user_public(user: User) -> dict:
 @router.post("/signup", status_code=status.HTTP_201_CREATED)
 def signup(payload: SignupRequest, db: Session = Depends(get_db)):
     """Register a new user and issue a dev-mode OTP for email verification."""
-    existing = db.query(User).filter(User.email == payload.email).first()
+    email = normalized_email(payload.email)
+    existing = db.query(User).filter(func.lower(User.email) == email).first()
     if existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -112,7 +118,7 @@ def signup(payload: SignupRequest, db: Session = Depends(get_db)):
     otp = generate_otp()
     user = User(
         name=payload.name,
-        email=payload.email,
+        email=email,
         password=hash_password(payload.password),
         height=payload.height_cm,
         weight=payload.weight_kg,
@@ -134,7 +140,8 @@ def signup(payload: SignupRequest, db: Session = Depends(get_db)):
 @router.post("/verify-otp")
 def verify_otp(payload: VerifyOtpRequest, db: Session = Depends(get_db)):
     """Verify a signup OTP."""
-    user = db.query(User).filter(User.email == payload.email).first()
+    email = normalized_email(payload.email)
+    user = db.query(User).filter(func.lower(User.email) == email).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
 
@@ -158,7 +165,8 @@ def verify_otp(payload: VerifyOtpRequest, db: Session = Depends(get_db)):
 @router.post("/resend-otp")
 def resend_otp(payload: ResendOtpRequest, db: Session = Depends(get_db)):
     """Generate and return a fresh dev-mode OTP."""
-    user = db.query(User).filter(User.email == payload.email).first()
+    email = normalized_email(payload.email)
+    user = db.query(User).filter(func.lower(User.email) == email).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
 
@@ -176,7 +184,8 @@ def resend_otp(payload: ResendOtpRequest, db: Session = Depends(get_db)):
 @router.post("/login")
 def login(payload: LoginRequest, db: Session = Depends(get_db)):
     """Authenticate user with email and password."""
-    user = db.query(User).filter(User.email == payload.email).first()
+    email = normalized_email(payload.email)
+    user = db.query(User).filter(func.lower(User.email) == email).first()
 
     if not user or not verify_password(payload.password, user.password):
         raise HTTPException(
@@ -190,7 +199,7 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
             detail="Please verify your email with the OTP before logging in.",
         )
 
-    token = create_access_token({"sub": user.id, "email": user.email})
+    token = create_access_token({"sub": str(user.id), "email": user.email})
 
     return {
         "token": token,
